@@ -1,0 +1,7 @@
+[Unit]
+Description=PlantVision capture-once
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/devel/plantvision-lab
+ExecStart=%h/devel/plantvision-lab/.venv/bin/python -m plantvision.capture.capture_once --config configs/capture.yaml

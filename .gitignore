@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 data/originals/
+data/spool/
+data/capture.log
 data/derived/
 data/masks/
 models/
