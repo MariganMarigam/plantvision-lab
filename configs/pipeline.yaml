@@ -1,0 +1,21 @@
+# PlantVision CV pipeline configuration (Stage 0 defaults; consumed from Stage 05 onward)
+
+# Region of interest in the frame: [x, y, w, h] pixels.
+# null at Stage 0 — set once the fixed mount framing is known (Stage 02).
+roi: null
+
+# In-frame physical scale reference (decision OQ4/D-confirmed: printed ArUco marker).
+scale_reference:
+  type: aruco
+  dict: DICT_4X4_50
+  marker_mm: 50
+
+# Metrics computed per frame by the pipeline (Stage 05).
+metrics:
+  - projected_area_px
+  - roi_fraction_pct
+  - bbox_w
+  - bbox_h
+
+# Version tag recorded alongside every processing/measurement row.
+pipeline_version: "baseline-0.1"

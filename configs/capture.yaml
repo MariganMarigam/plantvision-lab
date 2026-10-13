@@ -1,0 +1,38 @@
+# PlantVision capture configuration (Stage 0 defaults; consumed from Stage 02 onward)
+# Photoperiod per decision D8: RGB frames in the dark are unusable for growth metrics.
+
+camera_id: phone-01
+zone_id: shelf-a/tray-1
+
+# IP Webcam snapshot endpoint. PLACEHOLDER: must be set to the phone's actual
+# LAN address in Stage 02 before any capture runs.
+source_url: "http://<phone-ip>:8080/photo.jpg"
+
+# Cadence (decision D3).
+interval_minutes: 10
+
+# Single-attempt HTTP timeout.
+timeout_seconds: 10
+
+# Retry schedule for a failed pull: backoff delays (seconds) before each retry.
+retry_max: 5
+retry_backoff_seconds: [2, 5, 15, 60, 300]
+
+# Target capture resolution (IP Webcam may serve near this; stored as-is).
+resolution: [1280, 720]
+
+# Where accepted originals are written (relative to repo root; gitignored).
+output_dir: data/originals
+
+# Photoperiod light window in FARM-LOCAL time. Start inclusive, end exclusive
+# ("06:00" <= time < "22:00"). If this key is absent, consumers fall back to
+# the same 06:00-22:00 default.
+light_window:
+  start: "06:00"
+  end: "22:00"
+  tz: "local"
+
+# What to do with frames outside the light window:
+#   skip = do not capture at all (no file, not counted as a gap; run exits skipped_dark)
+#   tag  = capture anyway and mark the frame as dark (not usable for growth metrics)
+dark_policy: skip
