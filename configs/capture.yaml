@@ -8,8 +8,8 @@ zone_id: shelf-a/tray-1
 # LAN address before any real capture (user-provided; not derivable from code).
 source_url: "http://192.168.1.5:8080/photo.jpg"
 
-# Cadence (decision D3): one frame every 10 minutes; the systemd timer owns the firing.
-interval_minutes: 10
+# Cadence (decision D3): one frame every 1 minute (test mode); the systemd timer owns the firing.
+interval_minutes: 1
 
 # Single-attempt HTTP timeout / retry schedule for a failed pull.
 timeout_seconds: 10

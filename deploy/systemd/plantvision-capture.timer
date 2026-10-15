@@ -1,9 +1,9 @@
 [Unit]
-Description=PlantVision capture every 10 minutes
+Description=PlantVision capture every 1 minute
 
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=10min
+OnUnitActiveSec=1min
 Persistent=true
 
 [Install]
