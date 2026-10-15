@@ -26,6 +26,6 @@ def test_capture_config_keys() -> None:
         "dark_policy",
     }
     assert expected <= set(cfg)
-    assert cfg["interval_minutes"] == 10
+    assert cfg["interval_minutes"] == 1
     assert cfg["light_window"]["start"] == "06:00"
     assert cfg["dark_policy"] == "skip"
