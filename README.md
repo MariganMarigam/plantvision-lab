@@ -79,6 +79,8 @@ plantvision-lab/
 - [docs/data-contract.md](docs/data-contract.md) — the contract every ingest/processing
   component must honor.
 - [docs/decisions/](docs/decisions/) — architecture decision records.
+- [docs/connect-phone.md](docs/connect-phone.md) — turn an Android phone into the
+  IP-Webcam camera the capture stand pulls frames from.
 
 ## License
 
