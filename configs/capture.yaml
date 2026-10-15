@@ -6,7 +6,8 @@ zone_id: shelf-a/tray-1
 
 # IP Webcam snapshot endpoint. PLACEHOLDER: must be replaced by the phone's actual
 # LAN address before any real capture (user-provided; not derivable from code).
-source_url: "http://192.168.1.5:8080/photo.jpg"
+# 2026-10-15: phone moved .5 -> .3 (no DHCP reservation yet); see docs/connect-phone.md.
+source_url: "http://192.168.1.3:8080/photo.jpg"
 
 # Cadence (decision D3): one frame every 1 minute (test mode); the systemd timer owns the firing.
 interval_minutes: 1
