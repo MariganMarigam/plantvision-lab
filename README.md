@@ -31,7 +31,7 @@ the data-flow diagram (`docs/architecture.md#data-flow`).
 | Storage | Filesystem for originals (`data/originals/`), SQLite for metadata and measurements | Files for bytes, database for structure; SQLite is zero-ops and one `schema.sql` |
 | Idempotency | `sha256` of raw image bytes | Re-sent frames produce no duplicate rows |
 | CV | OpenCV; classical segmentation first (RGB/HSV thresholds, morphology) | No model training before there is labeled data to train on |
-| Scale reference | Printed ArUco marker (`DICT_4X4_50`, 50 mm) beside the plant | In-frame metric scale; OpenCV-native detections |
+| Scale reference | Printed ArUco marker (`DICT_5X5_50`, 50 mm) beside the plant | In-frame metric scale; OpenCV-native detections |
 | Photoperiod | Capture only during the light window (06:00–22:00); dark frames skipped | RGB frames taken in darkness cannot support growth metrics |
 | UI/plotting | Matplotlib notebooks → (Stage 5+) a small dashboard | History first, dashboards later |
 
@@ -81,6 +81,7 @@ plantvision-lab/
 - [docs/decisions/](docs/decisions/) — architecture decision records.
 - [docs/connect-phone.md](docs/connect-phone.md) — turn an Android phone into the
   IP-Webcam camera the capture stand pulls frames from.
+- [deploy/windows/](deploy/windows/) — Windows deployment: Task Scheduler wrapper (`run_capture.cmd`) and register script (`register-task.ps1`).
 
 ## License
 
