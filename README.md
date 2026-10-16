@@ -31,7 +31,7 @@ the data-flow diagram (`docs/architecture.md#data-flow`).
 | Storage | Filesystem for originals (`data/originals/`), SQLite for metadata and measurements | Files for bytes, database for structure; SQLite is zero-ops and one `schema.sql` |
 | Idempotency | `sha256` of raw image bytes | Re-sent frames produce no duplicate rows |
 | CV | OpenCV; classical segmentation first (RGB/HSV thresholds, morphology) | No model training before there is labeled data to train on |
-| Scale reference | Printed ArUco marker (`DICT_5X5_50`, 50 mm) beside the plant | In-frame metric scale; OpenCV-native detections |
+| Scale reference | Printed ArUco marker (`DICT_5X5_50`, 45 mm) beside the plant | In-frame metric scale; OpenCV-native detections |
 | Photoperiod | Capture only during the light window (06:00–22:00); dark frames skipped | RGB frames taken in darkness cannot support growth metrics |
 | UI/plotting | Matplotlib notebooks → (Stage 5+) a small dashboard | History first, dashboards later |
 

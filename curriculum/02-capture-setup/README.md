@@ -20,7 +20,7 @@ read the capture log. Code side: `src/plantvision/capture/`, config side:
 
 ## 2. In-frame scale reference: ArUco marker
 
-- Print one ArUco marker from `DICT_4X4_50` at **50 mm** marker width.
+- Print one ArUco marker from `DICT_5X5_50` at **45 mm** marker width.
 - Place it flat (or standing) beside the plant so it is always inside the
   frame: it converts pixels → millimetres and anchors all later growth
   metrics (projected leaf area, crown shape).

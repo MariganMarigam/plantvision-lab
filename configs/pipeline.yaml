@@ -7,8 +7,8 @@ roi: null
 # In-frame physical scale reference (decision OQ4/D-confirmed: printed ArUco marker).
 scale_reference:
   type: aruco
-  dict: DICT_4X4_50
-  marker_mm: 50
+  dict: DICT_5X5_50
+  marker_size_mm: 45
 
 # Metrics computed per frame by the pipeline (Stage 05).
 metrics:

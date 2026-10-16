@@ -26,7 +26,7 @@ Citations reference `task/practic_CV.txt` section/line anchors in the planning w
 - **Bounding box (bbox)**: The axis-aligned rectangle tightly enclosing the mask; `bbox_w`/`bbox_h` track crown spread in pixels.
 - **Occlusion**: Part of the plant is hidden (by a leaf over itself, equipment, or another plant) — a classic error source for projected area; treated in `practic_CV.txt:242-303` (§1.2/1.3 distortions, lighting, occlusion — farm-specific).
 - **capture_quality**: Estimated fitness of a frame for measurement (exposure, focus, blur, occlusion). Image-quality metrics live at `practic_CV.txt:2274`; the field family is defined in the data contract.
-- **Scale reference**: An in-frame object of known physical size — here a printed ArUco marker (`DICT_4X4_50`, 50 mm) — letting pixel measurements be converted to millimeters. See `reflection.md:489` (planning workspace).
+- **Scale reference**: An in-frame object of known physical size — here a printed ArUco marker (`DICT_5X5_50`, 45 mm) — letting pixel measurements be converted to millimeters. See `reflection.md:489` (planning workspace).
 
 ## Tracking / temporal
 
