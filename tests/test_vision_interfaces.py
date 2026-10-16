@@ -162,6 +162,12 @@ def test_check_px_per_mm_rejects_negative() -> None:
         check_px_per_mm(-1.0)
 
 
+def test_check_px_per_mm_rejects_bool() -> None:
+    """A bool masquerading as a number (True == 1) is rejected."""
+    with pytest.raises(ContractError):
+        check_px_per_mm(True)
+
+
 def test_check_measurement_result_rejects_missing_key() -> None:
     """A result dict missing required keys is rejected."""
     with pytest.raises(ContractError):
