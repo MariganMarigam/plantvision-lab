@@ -4,7 +4,7 @@
 > Sources of truth: `task/reflection.md` (plan spine), `task/plan_practic_CV.txt` (curriculum outline),
 > `task/practic_CV.txt` (theory, cited by line), `output/research/2026-10-13-phone-capture-minimal-stack.md` (E1).
 > Locked decisions **D1–D8** are recorded in `output/state/plantvision.md` (D8 = photoperiod).
-> **Deployment:** cadence is now **1 minute** (D3); Linux uses `deploy/systemd/` (dev host) and Windows uses `deploy/windows/` (running host) — see `deploy/windows/README.md`.
+> **Deployment:** cadence is now **10 minutes** (D3); Linux uses `deploy/systemd/` (dev host) and Windows uses `deploy/windows/` (running host) — see `deploy/windows/README.md`.
 
 ## How to read this roadmap
 - Each stage ends with a **verifiable acceptance criterion** — you only advance after the check passes

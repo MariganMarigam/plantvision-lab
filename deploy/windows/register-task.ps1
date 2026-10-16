@@ -2,7 +2,7 @@
 .SYNOPSIS
   Registers the PlantVisionCapture scheduled task (runs every N minutes, current user).
 .DESCRIPTION
-  Wraps deploy\windows\run_capture.cmd. Default cadence: 1 minute (decision D3).
+  Wraps deploy\windows\run_capture.cmd. Default cadence: 10 minutes (decision D3).
   Requires no admin rights: it registers a per-user task (RunLevel Limited).
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File .\deploy\windows\register-task.ps1
@@ -10,7 +10,7 @@
 [CmdletBinding()]
 param(
   [string]$TaskName = "PlantVisionCapture",
-  [int]$IntervalMinutes = 1
+  [int]$IntervalMinutes = 10
 )
 
 $ErrorActionPreference = "Stop"

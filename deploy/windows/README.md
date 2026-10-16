@@ -1,12 +1,12 @@
 # deploy/windows — PlantVision on Windows (Task Scheduler)
 
-Runs `plantvision.capture.capture_once` every 1 minute on Windows, mirroring the Linux
+Runs `plantvision.capture.capture_once` every 10 minutes on Windows, mirroring the Linux
 systemd timer. The code is cross-platform Python; only the scheduler differs (decision D10).
 
 ## Files
 - `run_capture.cmd` — Task Scheduler action: runs the venv `capture_once`, appends stdout/stderr
   to `data\capture_task.log`.
-- `register-task.ps1` — registers the per-user `PlantVisionCapture` task (every 1 minute).
+- `register-task.ps1` — registers the per-user `PlantVisionCapture` task (every 10 minutes).
 
 ## Setup
 ```powershell

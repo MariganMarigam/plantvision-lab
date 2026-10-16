@@ -4,7 +4,7 @@
 > Decision D10: the running host is **Windows**; the 10-min→1-min cadence is owned by **Task Scheduler**.
 > The wrapper/register scripts are specified verbatim in `output/handoff/deploy-windows-spec.md` (Ivan creates them).
 
-Goal: on a Windows box, pull one frame every 1 minute from the phone's IP Webcam and store it exactly
+Goal: on a Windows box, pull one frame every 10 minutes from the phone's IP Webcam and store it exactly
 as on Linux — one JPEG + one JSON sidecar under `data\originals\...`, one JSONL line per run in
 `data\capture.log`. The capture code is cross-platform Python; only the scheduler differs.
 
@@ -64,7 +64,7 @@ Run the tests once:
 
 ---
 
-## 5. Schedule every 1 minute — Task Scheduler
+## 5. Schedule every 10 minutes — Task Scheduler
 
 Use the scripts from `output/handoff/deploy-windows-spec.md` (create them first):
 `deploy\windows\run_capture.cmd` and `deploy\windows\register-task.ps1`.
@@ -74,13 +74,13 @@ Use the scripts from `output/handoff/deploy-windows-spec.md` (create them first)
 2. **General** tab: Name `PlantVisionCapture`; select **Run only when user is logged on**; **Run with highest
    privileges** unchecked.
 3. **Triggers** tab → **New…** → *Begin the task: On a schedule* → *One time*, set Start = now →
-   check **Repeat task every:** `1 minute` → **for a duration of:** `Indefinitely` → OK.
+   check **Repeat task every:** `10 minutes` → **for a duration of:** `Indefinitely` → OK.
 4. **Actions** tab → **New…** → *Start a program* →
    Program/script: `C:\path\to\plantvision-lab\deploy\windows\run_capture.cmd`
    Start in: `C:\path\to\plantvision-lab`
 5. **Conditions** tab: uncheck *Start the task only if the computer is on AC power* (if a laptop).
 6. **Settings** tab: check *If the task is already running, do not start a new instance*; check
-   *If the task fails, restart every* `1 minute` (a few attempts).
+   *If the task fails, restart every* `10 minutes` (a few attempts).
 7. **OK** (enter Windows password if prompted). Right-click the task → **Run** to test; confirm files appear.
 
 ### Option B — one-liner / script
@@ -90,10 +90,10 @@ powershell -ExecutionPolicy Bypass -File .\deploy\windows\register-task.ps1
 ```
 cmd `schtasks` equivalent:
 ```cmd
-schtasks /Create /TN "PlantVisionCapture" /SC MINUTE /MO 1 ^
+schtasks /Create /TN "PlantVisionCapture" /SC MINUTE /MO 10 ^
   /TR "C:\path\to\plantvision-lab\deploy\windows\run_capture.cmd" /F
 ```
-> `schtasks /SC MINUTE /MO 1` = every 1 minute. Verify: `schtasks /Query /TN "PlantVisionCapture" /V /FO LIST`.
+> `schtasks /SC MINUTE /MO 10` = every 10 minutes. Verify: `schtasks /Query /TN "PlantVisionCapture" /V /FO LIST`.
 > Remove: `schtasks /Delete /TN "PlantVisionCapture" /F`.
 
 ---
