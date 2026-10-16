@@ -36,6 +36,20 @@ storage is what keeps the boundary honest: the raw originals stay immutable on d
 database stores metadata and measurements, and every downstream aggregation is a view over
 those two — it can be re-derived, corrected, or discarded without touching the evidence.
 
+## Frozen perception / fiducial / measurement interfaces (P0)
+
+The CV pipeline exposes three frozen, swappable slots defined in
+`src/plantvision/vision/interfaces.py` — `perception(image)->mask`,
+`fiducial(image)->px_per_mm`, and `measurement(mask, px_per_mm, ts)->{...}`.
+A learned perception model replaces the perception slot behind the same
+signature later (see `output/plans/plantvision-model-first-strategy.md` §4);
+the fiducial stays classical `cv2.aruco` and measurement stays geometry. The
+contract is enforced by `tests/test_vision_interfaces.py`.
+
+The per-frame scale rule (recompute for every frame; a frame without a marker
+exposes pixel-only metrics) is recorded in **ADR 0002**
+([docs/decisions/0002-scale-reference.md](decisions/0002-scale-reference.md)).
+
 ## Boundary decisions recorded elsewhere
 
 - Pull-not-push + 10-minute cadence + filesystem + SQLite: **ADR 0001**
