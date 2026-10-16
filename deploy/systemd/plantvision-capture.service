@@ -5,3 +5,4 @@ Description=PlantVision capture-once
 Type=oneshot
 WorkingDirectory=%h/devel/plantvision-lab
 ExecStart=%h/devel/plantvision-lab/.venv/bin/python -m plantvision.capture.capture_once --config configs/capture.yaml
+ExecStartPost=-%h/devel/plantvision-lab/.venv/bin/python %h/devel/plantvision-lab/scripts/update_metrics.py --config configs/pipeline.yaml
