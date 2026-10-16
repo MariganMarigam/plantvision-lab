@@ -17,6 +17,7 @@ from typing import Sequence
 
 import cv2
 
+from plantvision.analytics.plots import PlotPoint, plot_projected_area
 from plantvision.vision.metrics import (
     FrameMeasurement,
     load_frames,
@@ -51,11 +52,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out", default="data/derived/plots")
     parser.add_argument("--zone", default="shelf-a_tray-1")
     return parser.parse_args(argv)
-
-
-def _parse_dt(captured_at: str) -> datetime:
-    """Parse an ISO timestamp, tolerating a trailing ``Z``."""
-    return datetime.fromisoformat(captured_at.replace("Z", "+00:00"))
 
 
 def _format_row(meas: FrameMeasurement) -> dict:
@@ -111,8 +107,7 @@ def plot_series(
 ) -> None:
     """Plot projected area (cm2) over capture time with failure-case markers.
 
-    Green series: scaled frames. Red circles: quality-flagged frames. Red
-    crosses at y=0: frames without a detectable marker (F1, unusable for cm2).
+    Delegates to the shared renderer in :mod:`plantvision.analytics.plots`.
 
     Args:
         measurements: One :class:`FrameMeasurement` per frame.
@@ -120,50 +115,15 @@ def plot_series(
         pipeline_version: Pipeline version for the title.
         out_png: Destination PNG path (parent dirs created).
     """
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    scaled = sorted(
-        [(_parse_dt(m.captured_at), m) for m in measurements
-         if m.projected_area_cm2 is not None and m.captured_at],
-        key=lambda pair: pair[0],
-    )
-    unscaled = [m for m in measurements if m.projected_area_cm2 is None]
-    unscaled_x = [_parse_dt(m.captured_at) for m in unscaled if m.captured_at]
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-    if scaled:
-        xs = [dt for dt, _m in scaled]
-        ys = [m.projected_area_cm2 for _dt, m in scaled]
-        ax.plot(xs, ys, "-", color="#2e7d32", linewidth=1, zorder=1)
-        ax.scatter(xs, ys, s=40, color="#2e7d32", label="projected area (cm²)", zorder=2)
-    flagged = [(dt, m) for dt, m in scaled if m.quality_flags]
-    if flagged:
-        ax.scatter(
-            [dt for dt, _m in flagged], [m.projected_area_cm2 for _dt, m in flagged],
-            s=140, facecolors="none", edgecolors="#d32f2f", linewidths=1.5,
-            label="quality flag (blur/dark/bright)", zorder=3,
+    points = [
+        PlotPoint(
+            captured_at=m.captured_at,
+            projected_area_cm2=m.projected_area_cm2,
+            quality_flags=tuple(m.quality_flags),
         )
-    if unscaled_x:
-        ax.scatter(
-            unscaled_x, [0.0] * len(unscaled_x), marker="x", s=90, color="#d32f2f",
-            label="no scale (unusable for cm²)", zorder=3,
-        )
-    ax.set_xlabel("captured_at (UTC)")
-    ax.set_ylabel("projected area (cm²)")
-    ax.set_title(f"PlantVision Stage 05 — {zone} — pipeline {pipeline_version}")
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc="best")
-    if scaled or unscaled_x:
-        fig.autofmt_xdate()
-    if not scaled and not unscaled:
-        ax.text(0.5, 0.5, "no frames", transform=ax.transAxes, ha="center")
-    out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.tight_layout()
-    fig.savefig(str(out_png), dpi=150)
-    plt.close(fig)
+        for m in measurements
+    ]
+    plot_projected_area(points, zone, pipeline_version, out_png)
 
 
 def write_summary(
