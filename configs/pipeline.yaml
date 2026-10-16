@@ -1,21 +1,31 @@
-# PlantVision CV pipeline configuration (Stage 0 defaults; consumed from Stage 05 onward)
+# PlantVision CV pipeline configuration (Stage 05 defaults)
+roi: null                       # [x, y, w, h] px or null = full frame
 
-# Region of interest in the frame: [x, y, w, h] pixels.
-# null at Stage 0 — set once the fixed mount framing is known (Stage 02).
-roi: null
-
-# In-frame physical scale reference (decision OQ4/D-confirmed: printed ArUco marker).
 scale_reference:
   type: aruco
   dict: DICT_5X5_50
   marker_size_mm: 45
 
-# Metrics computed per frame by the pipeline (Stage 05).
+# Classic segmentation (Stage 05). Starting values from the 2026-10-16 series evidence.
+segmentation:
+  method: hsv                   # hsv | exg | hsv_or_exg
+  hsv_lower: [25, 40, 40]       # OpenCV HSV, H in [0,180)
+  hsv_upper: [95, 255, 255]
+  exg_threshold: 20.0           # ExG = 2G - R - B (0..255 scale); >= threshold => plant
+  open_ksize: 5                 # odd
+  close_ksize: 7                # odd
+
+# Capture-quality gates (Stage 05). See plan §0: lapvar 16-17 = low-texture, NOT blur.
+quality:
+  blur_lapvar_min: 10.0         # Laplacian variance below this => "blur"
+  brightness_min: 40.0          # gray mean below this => "dark"
+  brightness_max: 220.0         # gray mean above this => "bright"
+
 metrics:
   - projected_area_px
+  - projected_area_cm2
   - roi_fraction_pct
   - bbox_w
   - bbox_h
 
-# Version tag recorded alongside every processing/measurement row.
 pipeline_version: "baseline-0.1"
