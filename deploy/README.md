@@ -10,6 +10,10 @@ status `skipped_dark` — no fetch, no frame, no gap.
 - `plantvision-capture.service` — oneshot unit running
   `~/.venv/bin/python -m plantvision.capture.capture_once --config configs/capture.yaml`
   from `%h/devel/plantvision-lab`.
+- After a successful capture the unit runs, via a **non-fatal** `ExecStartPost=-`,
+  `scripts/update_metrics.py --config configs/pipeline.yaml`: newly captured frames are
+  appended to `data/derived/metrics/timeseries.csv` and `data/derived/metrics/projected-area-<zone>.png`
+  is refreshed; a measurement failure never marks the unit failed.
 - `plantvision-capture.timer` — `OnBootSec=2min`, `OnUnitActiveSec=10min`,
   `Persistent=true` (backfills one missed run after sleep/reboot).
 

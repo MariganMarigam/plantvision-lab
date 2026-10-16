@@ -25,6 +25,9 @@ powershell -ExecutionPolicy Bypass -File .\deploy\windows\register-task.ps1
 - Inspect: `schtasks /Query /TN "PlantVisionCapture" /V /FO LIST`
 - Remove: `schtasks /Delete /TN "PlantVisionCapture" /F`
 - Logs: `data\capture_task.log` (scheduler stdout/stderr) and `data\capture.log` (per-run JSONL).
+- After each capture the runner appends newly captured frames to `data\derived\metrics\timeseries.csv`
+  and refreshes `data\derived\metrics\projected-area-<zone>.png`; failure is logged to
+  `data\capture_task.log` and never affects the capture exit code.
 
 ## Notes
 - Outbound-only HTTP to the phone; no inbound Windows Firewall rule is required.
