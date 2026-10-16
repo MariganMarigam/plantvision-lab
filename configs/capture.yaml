@@ -13,8 +13,8 @@ source_url: "http://192.168.1.3:8080/photo.jpg"
 interval_minutes: 10
 
 # Single-attempt HTTP timeout / retry schedule for a failed pull.
-# 1-min cadence (D3): worst-case failed run ~5s timeout + 2s + 5s backoffs ≈ 12 s;
-# a 300 s final backoff would stall the schedule.
+# 10-min cadence (D3): worst-case failed run ~5s timeout + 2s + 5s backoffs ≈ 12 s,
+# negligible against the 10-min interval.
 timeout_seconds: 5
 retry_max: 2
 retry_backoff_seconds: [2, 5]

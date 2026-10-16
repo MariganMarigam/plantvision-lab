@@ -1,7 +1,7 @@
 # PlantVision on Windows — deployment guide (Task Scheduler)
 
 > Author: @scout · 2026-10-15 · Companion to `output/handoff/HANDOFF-2026-10-15.md`.
-> Decision D10: the running host is **Windows**; the 10-min→1-min cadence is owned by **Task Scheduler**.
+> Decision D10: the running host is **Windows**; the 10-min cadence is owned by **Task Scheduler**.
 > The wrapper/register scripts are specified verbatim in `output/handoff/deploy-windows-spec.md` (Ivan creates them).
 
 Goal: on a Windows box, pull one frame every 10 minutes from the phone's IP Webcam and store it exactly
@@ -125,7 +125,7 @@ plantvision-lab\
 ## 8. Dark-window behaviour
 
 `capture_once` self-gates to `light_window` (default **06:00–22:00 local**, start inclusive / end exclusive).
-Task Scheduler still fires every minute; a run outside the window prints `{"status":"skipped_dark"}`, writes
+Task Scheduler fires every 10 minutes; a run outside the window prints `{"status":"skipped_dark"}`, writes
 **no** frame, and exits **0**. In Task Scheduler this shows as **Last Run Result `0x0`** — that is normal at night.
 No gap is logged for a dark skip (only real pull failures log `gap`).
 
@@ -140,7 +140,7 @@ No gap is logged for a dark skip (only real pull failures log `gap`).
 | `ModuleNotFoundError: plantvision` | venv not activated / not installed | Run via `.\.venv\Scripts\python.exe -m …` and (re)run `pip install -e ".[dev]"` |
 | `No such file or directory: '.venv'` / no venv | venv not created | `py -3.12 -m venv .venv` then install (step 2) |
 | `run_capture.cmd` will not run / register-task.ps1 blocked: *"running scripts is disabled"* | PowerShell **execution policy** | Run with `-ExecutionPolicy Bypass` (as in §5 Option B), or `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
-| Task shows *Last Run Result 0x…* non-zero every minute | capture error (gap) | Read `data\capture_task.log` and `data\capture.log`; usually the phone is unreachable |
+| Task shows *Last Run Result 0x…* non-zero every 10 minutes | capture error (gap) | Read `data\capture_task.log` and `data\capture.log`; usually the phone is unreachable |
 | Task never runs | trigger/timezone, or "only when logged on" and you logged out | Keep **Run only when user is logged on**, or store credentials; re-check the trigger |
 | Nothing overnight | dark window / computer asleep | Expected (D8); set **StartWhenAvailable** so a missed run backfills after wake |
 

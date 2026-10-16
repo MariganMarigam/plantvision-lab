@@ -5,6 +5,7 @@ __pycache__/
 data/originals/
 data/spool/
 data/capture.log
+data/capture_task.log
 data/derived/
 data/masks/
 models/
