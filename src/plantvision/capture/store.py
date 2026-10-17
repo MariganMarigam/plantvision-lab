@@ -63,3 +63,32 @@ def store_original(image_bytes: bytes, meta: dict, originals_dir: Path) -> tuple
     sidecar = path.with_suffix(".json")
     sidecar.write_text(json.dumps({**meta, "received_at": _utc_now()}, indent=2) + "\n")
     return path, True
+
+
+def build_sha_index(originals_dir: str | Path) -> dict[str, Path]:
+    """Map sha256 -> stored .jpg path for the WHOLE originals tree.
+
+    The pull path's ``store_original`` only dedupes within one day directory,
+    so a global check is required when the same bytes may already have been
+    stored under a different ``captured_at`` day (e.g. a frame first pulled
+    with a server-clock timestamp, then imported with its EXIF timestamp).
+
+    Args:
+        originals_dir: Root of the originals tree (may not exist yet).
+
+    Returns:
+        Dict mapping every sha256 found in the sidecars to its ``.jpg`` path
+        (first writer wins; duplicate sha across days -> first path in
+        ``rglob`` order, the value is informational only). Missing dir ->
+        empty dict. Sidecars without their ``.jpg`` are still indexed (only
+        keys are used) and malformed sidecars are skipped.
+    """
+    index: dict[str, Path] = {}
+    root = Path(originals_dir)
+    if not root.exists():
+        return index
+    for sidecar in root.rglob("*.json"):
+        sha = _sidecar_sha(sidecar)
+        if sha and sha not in index:
+            index[sha] = sidecar.with_suffix(".jpg")
+    return index

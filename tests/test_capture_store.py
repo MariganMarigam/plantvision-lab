@@ -2,7 +2,7 @@
 
 import json
 
-from plantvision.capture.store import store_original
+from plantvision.capture.store import build_sha_index, store_original
 
 BYTES = b"\xff\xd8test-frame-bytes\xff\xd9"
 META = {
@@ -33,3 +33,16 @@ def test_store_writes_sidecar(tmp_path) -> None:
     sidecar = json.loads(path.with_suffix(".json").read_text())
     assert sidecar["sha256"] == META["sha256"]
     assert "received_at" in sidecar
+
+
+def test_build_sha_index_maps_stored_frames(tmp_path) -> None:
+    stored_path, _ = store_original(BYTES, META, tmp_path)
+    index = build_sha_index(tmp_path)
+    assert index == {"a" * 64: stored_path}
+    assert stored_path.exists()
+
+
+def test_build_sha_index_missing_dir_and_malformed_sidecar(tmp_path) -> None:
+    assert build_sha_index(tmp_path / "nope") == {}
+    (tmp_path / "junk.json").write_text("{", encoding="utf-8")
+    assert build_sha_index(tmp_path) == {}
