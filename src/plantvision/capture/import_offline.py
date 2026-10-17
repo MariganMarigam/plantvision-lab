@@ -94,6 +94,27 @@ class ImportResult:
     dry_run: bool
     decisions: tuple[FileDecision, ...]
 
+    def to_summary(self) -> dict[str, Any]:
+        """Flat summary dict; per-file decisions only for dry runs (capped at 500)."""
+        summary: dict[str, Any] = {
+            "dry_run": self.dry_run,
+            "scanned": self.scanned,
+            "imported": self.imported,
+            "duplicates": self.duplicates,
+            "skipped_dark": self.skipped_dark,
+            "skipped_corrupt": self.skipped_corrupt,
+            "skipped_unsupported": self.skipped_unsupported,
+            "skipped_notime": self.skipped_notime,
+            "errors": self.errors,
+            "moved": self.moved,
+        }
+        if self.dry_run:
+            # The JSONL log is the record of truth for real runs; dry runs
+            # carry their (never-written) decisions in stdout instead.
+            summary["decisions"] = [d.to_dict() for d in self.decisions[:_SUMMARY_DECISION_LIMIT]]
+            summary["decisions_truncated"] = len(self.decisions) > _SUMMARY_DECISION_LIMIT
+        return summary
+
 
 def _utc_now() -> str:
     """Import-clock UTC timestamp (same format as capture_once._utc_now)."""
@@ -221,10 +242,11 @@ def _process_one(path: Path, source: Path, cfg: dict, thresholds: dict[str, Any]
                             message=str(exc))
     status = "ok" if stored else "duplicate"
     reason = "" if stored else "store_race"
-    moved = False  # --move archive hook arrives in Step 7 (_archive_source)
+    moved = _archive_source(path, source, str(thresholds["archive_subdir"]), sha) if move else False
+    message = "move failed" if (move and not moved) else ""
     return FileDecision(str(path), status, reason=reason, sha256=sha, captured_at=captured_at,
                         time_source=guess.source, path=str(stored_path),
-                        brightness=round(brightness, 2), moved=moved)
+                        brightness=round(brightness, 2), moved=moved, message=message)
 
 
 def _summarize(decisions: list[FileDecision], *, dry_run: bool) -> ImportResult:
@@ -254,6 +276,74 @@ def _log_record(decision: FileDecision) -> dict[str, Any]:
         if v not in ("", None, False):
             record[k] = v
     return record
+
+
+_SUMMARY_DECISION_LIMIT = 500
+
+
+def _archive_source(src_file: Path, source_root: Path, archive_subdir: str, sha256: str) -> bool:
+    """Relocate one ingested source file into ``<source>/<archive_subdir>/<rel>``.
+
+    Subdirectories are preserved; a name collision is suffixed with the first
+    8 hex chars of the sha256. Never raises: an OSError results in ``False``
+    and the frame stays in place (the run continues).
+    """
+    rel = src_file.relative_to(source_root)
+    dest = source_root / archive_subdir / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        dest = dest.with_name(f"{dest.stem}_{sha256[:8]}{dest.suffix}")
+    try:
+        shutil.move(str(src_file), str(dest))
+        return True
+    except OSError:
+        return False
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse CLI arguments for the offline importer (move/copy mutually exclusive)."""
+    parser = argparse.ArgumentParser(
+        prog="import_offline",
+        description="Import externally captured phone frames (USB folder) into data/originals (P1).",
+    )
+    parser.add_argument("--source", required=True,
+                        help="Folder copied from the phone; scanned recursively.")
+    parser.add_argument("--config", default="configs/capture.yaml")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Report decisions only; writes no originals, no log lines, no moves.")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--copy", dest="move", action="store_false",
+                       help="Keep source files (default).")
+    group.add_argument("--move", dest="move", action="store_true",
+                       help="Move ingested source files into <source>/<archive_subdir>/.")
+    parser.set_defaults(move=False)
+    args = parser.parse_args(argv)
+    if args.dry_run and args.move:
+        parser.error("--dry-run cannot be combined with --move")
+    return args
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """CLI entry point: print one JSON summary line; 0 ok, 1 config/source error.
+
+    Exit codes: 0 = run completed (per-file errors included); 1 = config,
+    source or timezone error; 2 = argparse usage error.
+    """
+    args = parse_args(argv)
+    try:
+        result = import_folder(args.source, args.config, dry_run=args.dry_run, move=args.move)
+    except FileNotFoundError as exc:
+        print(json.dumps({"status": "error", "error": str(exc)}))
+        return 1
+    except (ValueError, KeyError, yaml.YAMLError, ZoneInfoNotFoundError) as exc:
+        print(json.dumps({"status": "error", "error": f"{type(exc).__name__}: {exc}"}))
+        return 1
+    print(json.dumps({"status": "ok", **result.to_summary()}))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 
 
 def import_folder(source_dir: str | Path, config_path: str | Path, *,

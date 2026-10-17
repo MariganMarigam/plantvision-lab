@@ -278,3 +278,91 @@ def test_red_dominance_ratio() -> None:
     assert red_dominance(_np.full((4, 4, 3), (30, 60, 180), _np.uint8)) == pytest.approx(3.0)
     with pytest.raises(ValueError):
         red_dominance(_np.zeros((4, 4), _np.uint8))
+
+
+# --- Step 7 ------------------------------------------------------------
+
+
+def test_dry_run_writes_nothing(tmp_path: Path) -> None:  # SC-7
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "frame.jpg").write_bytes(jpeg_with_exif(_noon(), "+00:00", bgr=_bright_bgr()))
+    cfg_path = _config(tmp_path)
+
+    def snapshot() -> tuple[list[str], list[tuple[str, float]]]:
+        rels = [str(q.relative_to(tmp_path)) for q in tmp_path.rglob("*")]
+        mtimes = [(str(q), q.stat().st_mtime) for q in tmp_path.rglob("*") if q.is_file()]
+        return (rels, mtimes)
+
+    before = snapshot()
+    result = import_folder(src, cfg_path, dry_run=True)
+    after = snapshot()
+    assert before == after
+    assert not (tmp_path / "originals").exists()
+    assert not (tmp_path / "capture.log").exists()
+    assert result.imported == 1
+    assert result.decisions[0].status == "ok"
+    assert result.decisions[0].path == ""
+
+
+def test_dry_run_summary_has_decisions(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "frame.jpg").write_bytes(jpeg_with_exif(_noon(), "+00:00", bgr=_bright_bgr()))
+    cfg_path = _config(tmp_path)
+    summary = import_folder(src, cfg_path, dry_run=True).to_summary()
+    assert summary["dry_run"] is True
+    assert "decisions" in summary
+    assert summary["decisions"][0]["status"] == "ok"
+    assert summary["decisions_truncated"] is False
+    assert "decisions" not in import_folder(src, cfg_path, dry_run=False).to_summary()
+
+
+def test_move_archives_ingested_source(tmp_path: Path) -> None:  # SC-9
+    src = tmp_path / "src"
+    src.mkdir()
+    p = src / "f.jpg"
+    p.write_bytes(jpeg_with_exif(_noon(), "+00:00", bgr=_bright_bgr()))
+    cfg_path = _config(tmp_path)
+    result = import_folder(src, cfg_path, move=True)
+    assert result.moved == 1
+    assert not p.exists()
+    assert (src / "_imported" / "f.jpg").exists()
+    assert result.imported == 1
+    second = import_folder(src, cfg_path, move=True)
+    assert second.scanned == 0
+    assert second.imported == 0
+
+
+def test_move_ignores_skipped_frames(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "ok.jpg").write_bytes(jpeg_with_exif(_noon(), "+00:00", bgr=_bright_bgr()))
+    dark_p = src / "night.jpg"
+    dark_p.write_bytes(jpeg_with_exif("2026:10:13 23:30:00", "+00:00", bgr=_bright_bgr()))
+    t = int(datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc).timestamp())
+    bad_p = src / "bad.jpg"
+    bad_p.write_bytes(b"\xff\xd8not-a-jpeg")
+    os.utime(bad_p, (t, t))
+    cfg_path = _config(tmp_path)
+    result = import_folder(src, cfg_path, move=True)
+    assert result.moved == 1
+    assert dark_p.exists()
+    assert bad_p.exists()
+
+
+def test_archive_preserves_subdirs_and_avoids_collision(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    (src / "sub").mkdir(parents=True)
+    p = src / "sub" / "f.jpg"
+    p.write_bytes(jpeg_with_exif(_noon(), "+00:00", bgr=_bright_bgr()))
+    cfg_path = _config(tmp_path)
+    import_folder(src, cfg_path, move=True)
+    assert (src / "_imported" / "sub" / "f.jpg").exists()
+    # Colliding second frame with different bytes -> suffixed archive name.
+    other = src / "sub" / "f.jpg"
+    other.write_bytes(jpeg_with_exif("2026:10:13 12:30:00", "+00:00", bgr=_bright_bgr()))
+    result = import_folder(src, cfg_path, move=True)
+    assert result.moved == 1
+    sha8 = result.decisions[0].sha256[:8]
+    assert (src / "_imported" / "sub" / f"f_{sha8}.jpg").exists()
