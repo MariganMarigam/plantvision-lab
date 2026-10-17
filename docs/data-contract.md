@@ -89,3 +89,24 @@ skips the dark window entirely.
 - No storage of un-hashed image content in the DB — the DB stores metadata and paths only.
 - No re-sizing or re-encoding of bytes *before* the sha256 is computed — the idempotency key
   must be over the bytes as they are actually persisted.
+
+## 7. Offline import (store-and-forward)
+
+Ingest of an externally captured phone frame folder (recorded while the PC was off, copied
+over USB later) via `scripts\import_offline.py` / `plantvision.capture.import_offline`:
+
+- Import writes into the SAME tree as the pull path:
+  `data/originals/<camera_id>/<zone_slug>/<YYYY-MM-DD>/<UTC-TS>_<sha16>.jpg` + same-stem `.json`.
+- `captured_at` = device time from EXIF -> filename -> mtime (`time_source` records which);
+  `received_at` = import time, written by `store_original`.
+- Import statuses in `data/capture.log`:
+  `ok | duplicate | skipped_dark (reason=window|brightness) | skipped_corrupt | skipped_unsupported | skipped_notime | error`,
+  plus one `import_summary` record per run.
+- Idempotency is global, not day-local: `build_sha_index()` scans every sidecar under
+  `data/originals/` before storing.
+- OPTIONAL (non-required) sidecar keys added by import: `time_source`, `source_relpath`,
+  `quality`, `quality_flags`, `brightness`, `blur_lapvar`, `red_dominance`. They are
+  informational; no measurement code reads them yet. Required keys of section 1 are unchanged.
+- `quality`/`quality_flags` are capture-side flags only (`blur|dark|bright|red`). `red` means
+  mean(R)/mean(G) >= `import.red_dominance_min` and is a red-grow-light indicator, never a
+  rejection.

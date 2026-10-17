@@ -155,3 +155,54 @@ schtasks /Run    /TN "PlantVisionCapture"        :: force one run now
 schtasks /Delete /TN "PlantVisionCapture" /F     :: remove the schedule
 ```
 Logs: `data\capture_task.log` (scheduler stdout/stderr) and `data\capture.log` (per-run JSONL).
+
+---
+
+## 11. Offline import (USB folder)
+
+The Task Scheduler pull task (`PlantVisionCapture`) is **DISABLED** after this feature ships;
+this import path is the **primary data source**. The pull path stays in the repo, untouched.
+The phone stores frames locally while the PC is off; the folder is copied over USB later.
+
+```powershell
+cd C:\Users\UserX\Downloads\CV\plantvision-lab
+
+# 0. Copy the phone's folder to the PC first (e.g. D:\phone-dump\DCIM\OpenCamera).
+#    Windows Explorer / robocopy preserve file mtimes; a USB-MTP copy does not
+#    (those frames then fall back to mtime and are flagged time_source=mtime).
+
+# 1. Preview - writes nothing at all:
+.\.venv\Scripts\python.exe scripts\import_offline.py --source "D:\phone-dump\DCIM\OpenCamera" --dry-run
+
+# 2. Import (default = copy; the source folder is left untouched):
+.\.venv\Scripts\python.exe scripts\import_offline.py --source "D:\phone-dump\DCIM\OpenCamera"
+
+# 2b. Or import and archive what was ingested into <source>\_imported\ (use only on
+#     a disposable copy - skipped/corrupt frames are deliberately left in place):
+.\.venv\Scripts\python.exe scripts\import_offline.py --source "D:\phone-dump\DCIM\OpenCamera" --move
+
+# 3. Flywheel - measures every new frame and rewrites the per-zone plots:
+.\.venv\Scripts\python.exe scripts\update_metrics.py
+
+# 4. Inspect the last import:
+Get-Content data\capture.log -Tail 20
+Get-Content data\derived\metrics\timeseries.csv -Head 1
+```
+
+Notes:
+
+- `python -m plantvision.capture.import_offline --source ...` is equivalent to the
+  `scripts\import_offline.py` form.
+- Exit codes: `0` run completed (per-file errors included), `1` config/source/tz error,
+  `2` bad CLI usage.
+- The summary JSON is one line on stdout; counts are printed as
+  `scanned/imported/duplicates/skipped_dark/skipped_corrupt/skipped_unsupported/skipped_notime/errors/moved`.
+- Import is idempotent: re-running it after a partial USB copy is safe and imports only the
+  missing frames (`build_sha_index()` checks the whole originals tree, not one day).
+- `--move` keeps skipped/dark/corrupt frames in place for human inspection and never fails
+  the run; the `<source>\_imported\` folder is excluded from scanning, so it never causes
+  re-work. Use `--move` only on disposable copies.
+- No change is needed in `scripts/update_metrics.py`; it picks up any new sidecar-backed
+  frame by `sha256`.
+- Confirm the pull task is off: `schtasks /Query /TN "PlantVisionCapture" /V /FO LIST`
+  (State: Disabled).
