@@ -88,3 +88,26 @@ def quality_flags(
     elif b > brightness_max:
         flags.append("bright")
     return flags
+
+
+def red_dominance(bgr: np.ndarray) -> float:
+    """Mean(R)/mean(G) of a BGR frame (red-grow-light indicator).
+
+    Informational only: a value at or above the configured threshold is a
+    red-light hint, never a rejection.
+
+    Args:
+        bgr: ``(H, W, 3)`` uint8 BGR frame (OpenCV channel order).
+
+    Returns:
+        ``mean(R) / max(mean(G), 1.0)`` — finite even for an all-black frame
+        (the ``max`` guards against ZeroDivisionError).
+
+    Raises:
+        ValueError: If the input is not a 3-channel BGR array.
+    """
+    if bgr.ndim != 3 or bgr.shape[2] != 3:
+        raise ValueError(f"expected (H,W,3) BGR, got shape={bgr.shape}")
+    mean_r = float(bgr[:, :, 2].mean())  # OpenCV BGR: index 2 is red.
+    mean_g = float(bgr[:, :, 1].mean())
+    return mean_r / max(mean_g, 1.0)
