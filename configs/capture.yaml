@@ -39,3 +39,21 @@ light_window:
 #   skip = do not capture at all (no fetch, no file; run exits skipped_dark / exit 0)
 #   tag  = capture anyway and mark the frame quality="dark" (unusable for growth metrics)
 dark_policy: skip
+
+
+# -- Offline import (USB folder copy) - scripts/import_offline.py -------------
+# The phone stores frames locally while the PC is off; the folder is copied over
+# later and ingested here. Frames land in the SAME originals tree as the pull path,
+# so the flywheel (scripts/update_metrics.py) measures them with no changes.
+# Thresholds below are IMPORT-side only; none of them change measurement code.
+import:
+  extensions: [".jpg", ".jpeg"]   # matched case-insensitively; anything else => skipped_unsupported
+  brightness_min: 40.0            # gray mean below => skipped_dark (reason: brightness); aligned with pipeline quality.brightness_min
+  brightness_max: 220.0           # gray mean above => "bright" flag only (never skipped)
+  blur_lapvar_min: 10.0           # Laplacian variance below => "blur" flag only (never skipped)
+  red_dominance_min: 1.5          # mean(R)/mean(G) >= this => "red" flag only (never skipped).
+                                  # Evidence 2026-10-17, 69 baseline frames under white light:
+                                  # red_dominance range 0.89-1.44 (median 1.11), so 1.5 does not
+                                  # false-flag them; re-measure under the red grow lamp and lower
+                                  # it only if genuinely red-lit frames still pass unflagged.
+  archive_subdir: "_imported"     # --move destination, relative to --source (never re-scanned)
