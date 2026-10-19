@@ -1,0 +1,16 @@
+# PlantVision ML lab extras — REFERENCE LIST for the Linux ML host.
+# Installed by deploy/linux/setup-ml.sh (pip install -r requirements-ml.txt).
+# The torch line is a comment on purpose: CUDA torch is installed SEPARATELY
+# via --index-url (deploy/linux/setup-ml.sh; CUDA_CHANNEL selects cu126/cu124/cpu):
+#   torch==2.5.1            # CUDA build via --index-url, never from PyPI default
+#   torchvision==0.20.1     # companion wheel, same --index-url
+pandas==2.2.3
+scikit-learn==1.6.0
+transformers==4.56.1
+timm==1.0.11
+segmentation-models-pytorch==0.4.0
+albumentations==1.4.21
+# optional (uncomment deliberately):
+# ultralytics==8.3.40        # AGPL-3.0 - benchmark only (yolo11n-seg / yolo26n-seg; see configs/models.yaml)
+# streamlit==1.40.1
+# onnxruntime==1.20.1        # CPU; use onnxruntime-gpu==1.20.1 for CUDA

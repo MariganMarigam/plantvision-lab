@@ -1,0 +1,78 @@
+# PlantVision MODEL REGISTRY (declarative; consumed by scripts/download_models.py).
+# Entry fields: name / task (segment|detect|backbone) / license (SPDX) / url
+# (direct download) / filename / sha256 (null = TOFU: the hash is recorded on
+# first download into a <filename>.sha256 sidecar and may be pinned back with
+# --record-hashes) / size_mb / notes / optional.
+# Entries marked `optional: true` are SKIPPED by default; fetch explicitly with
+# `--only <name>`.
+#
+# Usage (Linux ML host): python scripts/download_models.py [--dry-run] [--only NAME]
+# Hashes are TOFU on purpose: pin them (--record-hashes) on the first verified
+# mirror run, then they are enforced on every later download.
+#
+# NOTE: DINOv3 (if added later) is non-permissive (Facebook DINOv3 license is
+# non-commercial) — do NOT add it to this registry without an explicit
+# licensing decision. DINOv2 below is Apache-2.0 and safe.
+
+storage_dir: models
+# Env var honoured by transformers/huggingface_hub for restricted networks,
+# e.g. HF_ENDPOINT=https://hf-mirror.com (not used by download_models.py itself,
+# which hits the direct URLs below).
+hf_mirror_env: HF_ENDPOINT
+
+models:
+  - name: sam2.1_hiera_small
+    task: segment
+    license: Apache-2.0
+    url: https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.pt
+    filename: sam2.1_hiera_small.pt
+    sha256: null
+    size_mb: 184.4
+    notes: "SAM 2.1 Hiera-S; prime promptable segmenter for the SAM2 labeling pipeline."
+
+  - name: sam2.1_hiera_base_plus
+    task: segment
+    license: Apache-2.0
+    url: https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_base_plus.pt
+    filename: sam2.1_hiera_base_plus.pt
+    sha256: null
+    size_mb: 323.6
+    optional: true
+    notes: "Higher-quality SAM 2.1 Hiera-B+; fetch only if the small variant under-segments."
+
+  - name: yolo11n-seg
+    task: detect
+    license: AGPL-3.0
+    url: https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n-seg.pt
+    filename: yolo11n-seg.pt
+    sha256: null
+    size_mb: 6.2
+    notes: "YOLO11-nano segmentation; AGPL-3.0 — BENCHMARK ONLY, never shipped or linked into product code."
+
+  - name: yolo26n-seg
+    task: detect
+    license: AGPL-3.0
+    url: https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-seg.pt
+    filename: yolo26n-seg.pt
+    sha256: null
+    size_mb: 6.7
+    optional: true
+    notes: "YOLO26-nano segmentation (newer baseline); AGPL-3.0 — benchmark only."
+
+  - name: dinov2-small
+    task: backbone
+    license: Apache-2.0
+    url: https://huggingface.co/facebook/dinov2-small/resolve/main/model.safetensors
+    filename: model.safetensors
+    sha256: null
+    size_mb: 88.2
+    notes: "DINOv2 ViT-S/14 backbone (facebook/dinov2-small) for frozen-feature baselines."
+
+  - name: segformer-b0
+    task: segment
+    license: Apache-2.0
+    url: https://huggingface.co/nvidia/segformer-b0-finetuned-ade-512-512/resolve/main/model.safetensors
+    filename: model.safetensors
+    sha256: null
+    size_mb: 15.0
+    notes: "SegFormer-B0 (ADE20K fine-tune) lightweight student for distillation."
