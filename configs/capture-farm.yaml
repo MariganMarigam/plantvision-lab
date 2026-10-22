@@ -1,0 +1,45 @@
+# PlantVision capture configuration for the FARM dataset (offline import only).
+# This is deliberately a SEPARATE camera_id/zone from the home rig (phone-01),
+# so blurple-lit farm frames never mix with white-light home frames in the
+# metrics store or gallery. Used by scripts/import_offline.py --config.
+
+camera_id: farm-01
+zone_id: farm/zone-a
+
+# Not used by the offline import path (the phone stores frames itself). Kept for
+# schema compatibility with capture.yaml.
+source_url: "http://192.168.1.3:8080/photo.jpg"
+
+# Cadence used on the phone (Open Camera auto-repeat). Informational for import.
+interval_minutes: 5
+
+timeout_seconds: 5
+retry_max: 2
+retry_backoff_seconds: [2, 5]
+
+# Farm frames are 720x1280 (portrait).
+resolution: [720, 1280]
+
+originals_dir: data/originals
+spool_dir: data/spool
+log_path: data/capture.log
+
+# Farm photoperiod. TODO: confirm the farm's actual light schedule; the capture
+# set spans ~06:00-22:00 local and ~36 evening frames fall outside this window.
+light_window:
+  start: "06:00"
+  end: "22:00"
+  tz: "local"
+
+dark_policy: skip
+
+# -- Offline import (USB folder copy) - scripts/import_offline.py -------------
+import:
+  extensions: [".jpg", ".jpeg"]
+  brightness_min: 40.0
+  brightness_max: 220.0
+  blur_lapvar_min: 10.0
+  # Farm is BLURPLE-lit: measured red_dominance ~1.56-1.58 on 2026-10-22.
+  # Kept at 1.5 so these frames carry the informational "red" flag (never skipped).
+  red_dominance_min: 1.5
+  archive_subdir: "_imported"
