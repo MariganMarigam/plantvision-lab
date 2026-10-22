@@ -186,3 +186,172 @@ def latest_decisions(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]
     for rec in records:
         out[str(rec["sha256"])] = rec
     return out
+
+
+def _sorted_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Sort manifest rows by ``(captured_at, sha256)`` (idempotent)."""
+    return sorted(rows, key=lambda r: (r["captured_at"], r["sha256"]))
+
+
+def _split_counts(n: int) -> tuple[int, int]:
+    """Compute ``(n_train, n_val)`` for n rows under the 70/15/15 rule.
+
+    Uses floor/clamp so every split keeps >= 1 row when n >= 3, and all
+    rows fall to train when n < 3 (plan Section 4.5).
+    """
+    n_train = max(1, int(0.70 * n))
+    n_val = max(1, int(0.15 * n))
+    if n - n_train - n_val < 1:
+        n_train = n - n_val - 1
+    return n_train, n_val
+
+
+def assign_splits(
+    rows: list[dict[str, Any]], strategy: str = "temporal"
+) -> list[dict[str, Any]]:
+    """Assign ``split`` to every row; deterministic, no RNG.
+
+    Args:
+        rows: Manifest rows (dicts; sorted by ``(captured_at, sha256)``
+            internally, so input order is irrelevant).
+        strategy: ``"temporal"`` sorts rows then assigns contiguous
+            train/val/test blocks; ``"group"`` assigns whole
+            ``group_key`` groups (70/15/15 on the sorted group list).
+
+    Returns:
+        The same row dicts (mutated), each with ``split`` set.
+
+    Raises:
+        ValueError: If ``strategy`` is unknown, or the group strategy is
+            used with fewer than 3 distinct group keys.
+    """
+    if strategy not in ("temporal", "group"):
+        raise ValueError(f"unknown split strategy: {strategy!r}")
+    sorted_rows = _sorted_rows(rows)
+    if strategy == "temporal":
+        n = len(sorted_rows)
+        if n < 3:
+            for row in sorted_rows:
+                row["split"] = "train"
+            return sorted_rows
+        n_train, n_val = _split_counts(n)
+        for i, row in enumerate(sorted_rows):
+            if i < n_train:
+                row["split"] = "train"
+            elif i < n_train + n_val:
+                row["split"] = "val"
+            else:
+                row["split"] = "test"
+        return sorted_rows
+
+    groups = sorted({str(r["group_key"]) for r in sorted_rows})
+    if len(groups) < 3:
+        raise ValueError(
+            "group split requires >= 3 distinct group keys, "
+            f"got {len(groups)}: {groups}"
+        )
+    n_groups = len(groups)
+    g_train, g_val = _split_counts(n_groups)
+    group_train, group_val, group_test = (
+        groups[:g_train],
+        groups[g_train : g_train + g_val],
+        groups[g_train + g_val:],
+    )
+    for row in sorted_rows:
+        g = str(row["group_key"])
+        if g in group_train:
+            row["split"] = "train"
+        elif g in group_val:
+            row["split"] = "val"
+        else:
+            row["split"] = "test"
+    return sorted_rows
+
+
+def build_manifest(
+    proposals: list[dict[str, Any]],
+    decisions: dict[str, dict[str, Any]],
+    strategy: str = "temporal",
+) -> list[dict[str, Any]]:
+    """Join proposals with decisions into manifest rows with splits.
+
+    Args:
+        proposals: Parsed proposal records (last one per sha256 wins;
+            requires ``sha256``, ``frame_relpath``, ``mask_relpath``,
+            ``score``, ``area_fraction``, ``box``, ``box_source``,
+            ``model``, ``checkpoint``, ``created_at``, ``group_key``,
+            ``captured_at``).
+        decisions: Mapping sha256 -> decision record; decisions for
+            unknown shas are ignored.
+        strategy: Split strategy forwarded to :func:`assign_splits`.
+
+    Returns:
+        Rows with keys exactly :data:`MANIFEST_COLUMNS`, sorted by
+        ``(captured_at, sha256)``, splits assigned.
+
+    Raises:
+        KeyError: If a proposal record lacks a required key (corrupt log).
+        ValueError: Unknown split strategy (documented CLI contract).
+    """
+    uniq = latest_proposals(proposals)
+    rows: list[dict[str, Any]] = []
+    for sha, p in uniq.items():
+        d = decisions.get(sha)
+        accepted = ""
+        reject_reason = ""
+        reviewer = ""
+        reviewed_at = ""
+        if d is not None:
+            verdict = str(d.get("verdict", ""))
+            if verdict == "accept":
+                accepted = "1"
+            elif verdict == "reject":
+                accepted = "0"
+                reject_reason = str(d.get("reason", ""))
+            reviewer = str(d.get("reviewer", ""))
+            reviewed_at = str(d.get("decided_at", ""))
+        box = p["box"]
+        rows.append(
+            {
+                "sha256": sha,
+                "frame_relpath": p["frame_relpath"],
+                "mask_relpath": p["mask_relpath"],
+                "accepted": accepted,
+                "reject_reason": reject_reason,
+                "reviewer": reviewer,
+                "reviewed_at": reviewed_at,
+                "split": "",
+                "group_key": p["group_key"],
+                "captured_at": p["captured_at"],
+                "confidence": f"{float(p['score']):.4f}",
+                "area_fraction": f"{float(p['area_fraction']):.4f}",
+                "box": ";".join(str(int(v)) for v in box),
+                "box_source": p["box_source"],
+                "model": p["model"],
+                "checkpoint": p["checkpoint"],
+                "created_at": p["created_at"],
+            }
+        )
+    sorted_rows = _sorted_rows(rows)
+    return assign_splits(sorted_rows, strategy=strategy)
+
+
+def write_manifest_csv(rows: list[dict[str, Any]], path: Path) -> Path:
+    """Write manifest rows to CSV with the exact column order.
+
+    Args:
+        rows: Manifest rows from :func:`build_manifest`.
+        path: Destination ``manifest.csv`` (parents created).
+
+    Returns:
+        The destination path.
+
+    Raises:
+        OSError: If the destination is not writable (propagated).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        writer = csv.DictWriter(fh, fieldnames=MANIFEST_COLUMNS, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+    return path
