@@ -15,3 +15,7 @@ runs/
 .env
 .DS_Store
 curriculum/01-image-fundamentals/output/
+checkpoints/
+vendor/
+data/labels/*/overlays/
+data/labels/*/export/
