@@ -8,7 +8,7 @@ zone_id: farm/zone-a
 
 # Not used by the offline import path (the phone stores frames itself). Kept for
 # schema compatibility with capture.yaml.
-source_url: "http://192.168.1.3:8080/photo.jpg"
+source_url: "http://<phone-ip>:8080/photo.jpg"
 
 # Cadence used on the phone (Open Camera auto-repeat). Informational for import.
 interval_minutes: 5
