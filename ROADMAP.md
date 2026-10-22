@@ -6,6 +6,10 @@
 > Locked decisions **D1–D8** are recorded in `output/state/plantvision.md` (D8 = photoperiod).
 > **Deployment:** cadence is now **10 minutes** (D3); Linux uses `deploy/systemd/` (dev host) and Windows uses `deploy/windows/` (running host) — see `deploy/windows/README.md`.
 
+## Current phase (2026-10-22)
+- **P1.5 Observability & provenance**: shape traits, MIAPPE-lite metadata, coverage audit, camera-settings
+  capture (see `docs/forward-plan-2026-10-22.md`).
+
 ## How to read this roadmap
 - Each stage ends with a **verifiable acceptance criterion** — you only advance after the check passes
   (`reflection.md:219`, `reflection.md:495`).
