@@ -1,0 +1,45 @@
+# PlantVision capture configuration for the WHITE-LIGHT reference series (P1.3).
+# Same rig geometry and species as capture-farm, but white LED only, so these
+# frames carry a colour-valid domain (D7) and never mix with the blurple farm
+# series (distinct camera_id/zone_id). Used by scripts/import_offline.py.
+
+camera_id: farm-white-01
+zone_id: farm/zone-a-white
+crop_id: basil
+
+# Not used by the offline import path (the phone stores frames itself). Kept for
+# schema compatibility with capture.yaml.
+source_url: "http://<phone-ip>:8080/photo.jpg"
+
+# Cadence used on the phone (Open Camera auto-repeat). Informational for import.
+interval_minutes: 5
+
+timeout_seconds: 5
+retry_max: 2
+retry_backoff_seconds: [2, 5]
+
+# White-series frames are 720x1280 (portrait), same rig as the farm camera.
+resolution: [720, 1280]
+
+originals_dir: data/originals
+spool_dir: data/spool
+log_path: data/capture.log
+
+# Light window disabled: the series is captured inside the farm's lit hours
+# anyway, and a 00:00-23:59 window keeps every delivered frame eligible.
+light_window:
+  start: "00:00"
+  end: "23:59"
+  tz: "local"
+
+dark_policy: skip
+
+# -- Offline import (USB folder copy) - scripts/import_offline.py -------------
+# Identical thresholds to capture-farm.yaml.
+import:
+  extensions: [".jpg", ".jpeg"]
+  brightness_min: 40.0
+  brightness_max: 220.0
+  blur_lapvar_min: 10.0
+  red_dominance_min: 1.5
+  archive_subdir: "_imported"

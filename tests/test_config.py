@@ -31,6 +31,20 @@ def test_capture_config_keys() -> None:
     assert cfg["dark_policy"] == "skip"
 
 
+def test_capture_white_config() -> None:
+    """White-light profile mirrors capture-farm except identity/light window (P1.3)."""
+    cfg = yaml.safe_load((REPO_ROOT / "configs" / "capture-white.yaml").read_text())
+    farm = yaml.safe_load((REPO_ROOT / "configs" / "capture-farm.yaml").read_text())
+    assert cfg["camera_id"] == "farm-white-01"
+    assert cfg["zone_id"] == "farm/zone-a-white"
+    assert cfg["crop_id"] == "basil"
+    assert cfg["interval_minutes"] == 5
+    assert cfg["resolution"] == [720, 1280]
+    assert cfg["light_window"] == {"start": "00:00", "end": "23:59", "tz": "local"}
+    for key in ("originals_dir", "spool_dir", "log_path", "dark_policy", "import"):
+        assert cfg[key] == farm[key]
+
+
 def test_pipeline_config_keys() -> None:
     """All Stage-05 pipeline keys exist with the plan-specified defaults."""
     cfg = yaml.safe_load((REPO_ROOT / "configs" / "pipeline.yaml").read_text())

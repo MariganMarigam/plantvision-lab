@@ -10,7 +10,8 @@ import numpy as np
 _CAPTURED_AT_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z")
 
 
-def build_metadata(image_bytes: bytes, captured_at: str, camera_id: str, zone_id: str) -> dict:
+def build_metadata(image_bytes: bytes, captured_at: str, camera_id: str, zone_id: str,
+                   crop_id: str | None = None) -> dict:
     """Build metadata for one captured frame.
 
     Args:
@@ -18,10 +19,12 @@ def build_metadata(image_bytes: bytes, captured_at: str, camera_id: str, zone_id
         captured_at: ISO-8601 UTC timestamp ending in "Z" (device clock).
         camera_id: Camera identifier (e.g. "phone-01").
         zone_id: Grow-zone identifier (e.g. "shelf-a/tray-1").
+        crop_id: Optional crop key (e.g. "basil"). Omitted from the result when
+            ``None``, so legacy sidecars stay unchanged.
 
     Returns:
         Dict with keys sha256, captured_at, camera_id, zone_id, width,
-        height, byte_size.
+        height, byte_size, plus ``crop_id`` when provided.
 
     Raises:
         ValueError: If captured_at is not ISO-8601 UTC ("...Z") or the bytes
@@ -35,7 +38,7 @@ def build_metadata(image_bytes: bytes, captured_at: str, camera_id: str, zone_id
     if arr is None:
         raise ValueError("undecodable image")
     height, width = arr.shape[:2]
-    return {
+    meta = {
         "sha256": hashlib.sha256(image_bytes).hexdigest(),
         "captured_at": captured_at,
         "camera_id": camera_id,
@@ -44,3 +47,6 @@ def build_metadata(image_bytes: bytes, captured_at: str, camera_id: str, zone_id
         "height": int(height),
         "byte_size": len(image_bytes),
     }
+    if crop_id is not None:
+        meta["crop_id"] = crop_id
+    return meta

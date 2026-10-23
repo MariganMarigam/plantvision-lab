@@ -214,7 +214,8 @@ def _process_one(path: Path, source: Path, cfg: dict, thresholds: dict[str, Any]
         return FileDecision(str(path), "skipped_dark", reason="window", sha256=sha,
                             captured_at=captured_at, time_source=guess.source)
     try:
-        meta = build_metadata(data, captured_at, cfg["camera_id"], cfg["zone_id"])
+        meta = build_metadata(data, captured_at, cfg["camera_id"], cfg["zone_id"],
+                              crop_id=cfg.get("crop_id"))
     except ValueError as exc:
         return FileDecision(str(path), "skipped_corrupt", reason="undecodable", sha256=sha,
                             message=str(exc))

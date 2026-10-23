@@ -260,6 +260,26 @@ def test_defaults_when_import_block_absent(tmp_path: Path) -> None:
     assert result.imported == 1
 
 
+def test_import_writes_crop_id_when_configured(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "frame.jpg").write_bytes(jpeg_with_exif(_noon(), "+00:00", bgr=_bright_bgr()))
+    cfg_path = _config(tmp_path, crop_id="basil")
+    import_folder(src, cfg_path)
+    side = json.loads(store_sidecars(cfg_path)[0].read_text(encoding="utf-8"))
+    assert side["crop_id"] == "basil"
+
+
+def test_import_omits_crop_id_when_absent(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "frame.jpg").write_bytes(jpeg_with_exif(_noon(), "+00:00", bgr=_bright_bgr()))
+    cfg_path = _config(tmp_path)  # legacy config, no crop_id
+    import_folder(src, cfg_path)
+    side = json.loads(store_sidecars(cfg_path)[0].read_text(encoding="utf-8"))
+    assert "crop_id" not in side
+
+
 def test_missing_source_raises(tmp_path: Path) -> None:
     cfg_path = _config(tmp_path)
     with pytest.raises(FileNotFoundError):

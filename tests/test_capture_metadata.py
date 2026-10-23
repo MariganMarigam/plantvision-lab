@@ -27,3 +27,14 @@ def test_metadata_sha_stable() -> None:
 def test_metadata_bad_time() -> None:
     with pytest.raises(ValueError):
         build_metadata(_jpeg_bytes(), "2026-01-01", "phone-01", "shelf-a/tray-1")
+
+
+def test_metadata_crop_id_when_given() -> None:
+    meta = build_metadata(_jpeg_bytes(), "2026-01-01T00:00:00.000000Z", "farm-white-01",
+                          "farm/zone-a-white", crop_id="basil")
+    assert meta["crop_id"] == "basil"
+
+
+def test_metadata_omits_crop_id_by_default() -> None:
+    meta = build_metadata(_jpeg_bytes(), "2026-01-01T00:00:00.000000Z", "phone-01", "shelf-a/tray-1")
+    assert "crop_id" not in meta
