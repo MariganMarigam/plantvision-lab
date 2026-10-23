@@ -1,9 +1,10 @@
-"""Batch SAM2 label proposer CLI (plan Step 8).
+"""Batch SAM2 label proposer CLI (plan Step 8, P1.1 box strategies).
 
-For every sha-keyed frame under ``--originals``: compute the classical
-ROI box prior, ask SAM2 for a mask, store mask + overlay + proposal
-line. Idempotent by sha256: a frame is skipped when its mask PNG exists
-AND a proposal line is already in the log, unless ``--force``.
+For every sha-keyed frame under ``--originals``: compute a box prompt with
+``--box-strategy`` (classical HSV, full frame, manual ``--box``, or the
+blurple-safe ridge prior), ask SAM2 for a mask, store mask + overlay +
+proposal line. Idempotent by sha256: a frame is skipped when its mask PNG
+exists AND a proposal line is already in the log, unless ``--force``.
 """
 
 from __future__ import annotations
@@ -17,10 +18,25 @@ from typing import Sequence
 import cv2
 
 from plantvision.labeling.frames import FrameRecord, load_frames
-from plantvision.labeling.prompts import full_frame_box, roi_box
+from plantvision.labeling.prompts import BOX_STRATEGIES, prior_box
 from plantvision.labeling.review import render_overlay
 from plantvision.labeling.sam2_backend import Sam2Error, Sam2Segmenter
 from plantvision.labeling.store import append_jsonl, latest_proposals, read_jsonl, write_mask
+
+
+def _parse_box(value: str) -> tuple[int, int, int, int]:
+    """Parse an ``x1,y1,x2,y2`` CLI value into an inclusive integer box."""
+    try:
+        parts = tuple(int(part) for part in value.split(","))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"invalid box {value!r}; expected x1,y1,x2,y2"
+        ) from exc
+    if len(parts) != 4:
+        raise argparse.ArgumentTypeError(
+            f"invalid box {value!r}; expected x1,y1,x2,y2"
+        )
+    return parts
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -33,13 +49,24 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--config", default="configs/sam2.1/sam2.1_hiera_s.yaml")
     p.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
     p.add_argument("--expand", type=float, default=0.15)
+    p.add_argument("--box-strategy", choices=BOX_STRATEGIES,
+                   default="classical",
+                   help="box prior: classical HSV, full frame, manual, or ridge")
+    p.add_argument("--box", type=_parse_box, default=None,
+                   help="manual prompt box x1,y1,x2,y2 "
+                        "(requires --box-strategy manual)")
     p.add_argument("--limit", type=int, default=0,
                    help="stop after N frames (0 = all)")
     p.add_argument("--only", default="",
                    help="single sha256 (or prefix) to label")
     p.add_argument("--force", action="store_true",
                    help="regenerate even when a proposal already exists")
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    if args.box_strategy == "manual" and args.box is None:
+        p.error("--box-strategy manual requires --box x1,y1,x2,y2")
+    if args.box is not None and args.box_strategy != "manual":
+        p.error("--box is only valid with --box-strategy manual")
+    return args
 
 
 def _record(
@@ -125,11 +152,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             errors += 1
             print(f"cannot read {frame.jpg}")
             continue
-        box = roi_box(image, expand=args.expand)
-        box_source = "hsv"
-        if box is None:
-            box = full_frame_box(image)
-            box_source = "full_frame"
+        box, box_source = prior_box(
+            image,
+            strategy=args.box_strategy,
+            box=args.box,
+            expand=args.expand,
+        )
         try:
             proposal = segmenter.segment(image, box)
         except Exception as exc:  # noqa: BLE001 (per plan: count + continue)

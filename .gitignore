@@ -8,6 +8,7 @@ data/capture.log
 data/capture_task.log
 data/derived/
 data/masks/
+data/labels/
 models/
 runs/
 *.pt
