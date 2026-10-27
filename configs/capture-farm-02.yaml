@@ -1,0 +1,46 @@
+# PlantVision capture configuration for the FARM-02 dataset (offline import only).
+# Second blurple farm rig: basil under BLURPLE, 1280x720 landscape, Open Camera
+# auto-repeat, ArUco DICT_5X5_50 marker id 2. A distinct camera_id/zone from
+# farm-01 keeps these frames out of the farm-01 metrics store and gallery.
+# Used by scripts/import_offline.py --config.
+
+camera_id: farm-02
+zone_id: farm/zone-b
+crop_id: basil
+
+# Not used by the offline import path (the phone stores frames itself). Kept for
+# schema compatibility with capture.yaml.
+source_url: "http://<phone-ip>:8080/photo.jpg"
+
+# Cadence used on the phone (Open Camera auto-repeat). Informational for import.
+interval_minutes: 5
+
+timeout_seconds: 5
+retry_max: 2
+retry_backoff_seconds: [2, 5]
+
+# Farm-02 frames are 1280x720 (landscape), unlike the portrait farm-01 rig.
+resolution: [1280, 720]
+
+originals_dir: data/originals
+spool_dir: data/spool
+log_path: data/capture.log
+
+# Farm photoperiod (same schedule as farm-01).
+light_window:
+  start: "06:00"
+  end: "22:00"
+  tz: "local"
+
+dark_policy: skip
+
+# -- Offline import (USB folder copy) - scripts/import_offline.py -------------
+# Identical thresholds to capture-farm.yaml.
+import:
+  extensions: [".jpg", ".jpeg"]
+  brightness_min: 40.0
+  brightness_max: 220.0
+  blur_lapvar_min: 10.0
+  # Farm is BLURPLE-lit: frames carry the informational "red" flag (never skipped).
+  red_dominance_min: 1.5
+  archive_subdir: "_imported"
