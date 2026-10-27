@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -28,10 +31,26 @@ TIMESERIES_COLUMNS: tuple[str, ...] = (
     "sha256", "captured_at", "received_at", "camera_id", "zone_id", "width",
     "height", "px_per_mm", "area_px", "area_cm2", "roi_fraction_pct",
     "bbox_w", "bbox_h", "quality_flag", "scale_ok",
+    # P1.5.1 shape traits (appended; blank = not measurable).
+    "solidity", "hull_area_px", "hull_area_cm2", "perimeter_px", "perimeter_cm",
+    "ellipse_major_px", "ellipse_minor_px", "extent", "n_components",
+    # P1.5.2 MIAPPE-lite provenance (appended; blank = absent/null).
+    "experiment_id", "biosource_id", "observation_unit_id", "treatment_id",
+    "light_regime", "exposure_s", "white_balance", "gain_db", "settings_source",
 )
 
 # Float columns -> decimal places in the store; None becomes "".
-FLOAT_DECIMALS: dict[str, int] = {"px_per_mm": 4, "area_cm2": 3, "roi_fraction_pct": 3}
+FLOAT_DECIMALS: dict[str, int] = {
+    "px_per_mm": 4, "area_cm2": 3, "roi_fraction_pct": 3,
+    "solidity": 4, "hull_area_px": 2, "hull_area_cm2": 3, "perimeter_px": 2,
+    "perimeter_cm": 3, "ellipse_major_px": 2, "ellipse_minor_px": 2, "extent": 4,
+    "exposure_s": 4, "gain_db": 2,
+}
+
+logger = logging.getLogger(__name__)
+
+_SETTING_KEYS: tuple[str, ...] = ("exposure_s", "white_balance", "gain_db")
+_SETTING_SOURCES: frozenset[str] = frozenset({"exif", "app", "manual"})
 
 
 @dataclass(frozen=True)
@@ -46,6 +65,15 @@ class FrameRecord:
     zone_id: str
     width: int | None
     height: int | None
+    experiment_id: str = ""
+    biosource_id: str = ""
+    observation_unit_id: str = ""
+    treatment_id: str = ""
+    light_regime: str = ""
+    exposure_s: float | None = None
+    white_balance: str = ""
+    gain_db: float | None = None
+    settings_source: str = ""
 
 
 @dataclass(frozen=True)
@@ -67,6 +95,46 @@ def _read_sidecar(sidecar: Path) -> dict | None:
         return json.loads(sidecar.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
+
+
+def _text(value: object) -> str:
+    """Render an optional sidecar value as a CSV string (``None`` -> "")."""
+    return "" if value is None else str(value)
+
+
+def _optional_float(meta: dict, key: str) -> float | None:
+    """Read an optional numeric sidecar key; absent/``null`` -> ``None``.
+
+    Raises:
+        ValueError: If the value is present but not numeric.
+    """
+    raw = meta.get(key)
+    if raw is None or raw == "":
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"sidecar {key} is not numeric: {raw!r}") from exc
+
+
+def _validate_settings(
+    exposure_s: float | None,
+    white_balance: str,
+    gain_db: float | None,
+    settings_source: str,
+) -> None:
+    """Reject a camera setting without a real provenance source.
+
+    Raises:
+        ValueError: If a setting is non-null but ``settings_source`` is absent
+            or claims ``"unavailable"``.
+    """
+    present = exposure_s is not None or white_balance != "" or gain_db is not None
+    if present and settings_source not in _SETTING_SOURCES:
+        raise ValueError(
+            "sidecar records a camera setting but settings_source="
+            f"{settings_source!r}; a setting without provenance is a false claim"
+        )
 
 
 def load_frame_records(originals_dir: str | Path) -> list[FrameRecord]:
@@ -91,6 +159,11 @@ def load_frame_records(originals_dir: str | Path) -> list[FrameRecord]:
         sha = meta.get("sha256")
         if not (isinstance(sha, str) and sha):
             continue
+        exposure_s = _optional_float(meta, "exposure_s")
+        white_balance = _text(meta.get("white_balance"))
+        gain_db = _optional_float(meta, "gain_db")
+        settings_source = _text(meta.get("settings_source"))
+        _validate_settings(exposure_s, white_balance, gain_db, settings_source)
         records.append(
             FrameRecord(
                 jpg=p,
@@ -101,6 +174,15 @@ def load_frame_records(originals_dir: str | Path) -> list[FrameRecord]:
                 zone_id=str(meta.get("zone_id", "")),
                 width=meta.get("width"),
                 height=meta.get("height"),
+                experiment_id=_text(meta.get("experiment_id")),
+                biosource_id=_text(meta.get("biosource_id")),
+                observation_unit_id=_text(meta.get("observation_unit_id")),
+                treatment_id=_text(meta.get("treatment_id")),
+                light_regime=_text(meta.get("light_regime")),
+                exposure_s=exposure_s,
+                white_balance=white_balance,
+                gain_db=gain_db,
+                settings_source=settings_source,
             )
         )
     records.sort(key=lambda r: (r.captured_at is None, r.captured_at or "", r.jpg.name))
@@ -123,8 +205,25 @@ def read_timeseries(path: str | Path) -> list[dict[str, str]]:
         return list(csv.DictReader(f))
 
 
+def _area_cm2(area_px: float | None, ppm: float | None) -> float | None:
+    """Convert a pixel area to cm2 (same convention as ``metrics._cm_metrics``)."""
+    if area_px is None or ppm is None:
+        return None
+    return area_px / (ppm**2) / 100.0
+
+
+def _length_cm(length_px: float | None, ppm: float | None) -> float | None:
+    """Convert a pixel length to cm (same convention as ``metrics._cm_metrics``)."""
+    if length_px is None or ppm is None:
+        return None
+    return length_px / ppm / 10.0
+
+
 def format_row(record: FrameRecord, meas: FrameMeasurement) -> dict[str, str]:
     """Convert a record + measurement into a TIMESERIES_COLUMNS-ordered row.
+
+    Empty masks (traits ``None``) and missing scale produce blank cells — the
+    distinction between "not measurable" and a measured zero is preserved.
 
     Args:
         record: Sidecar-backed frame record (provenance columns).
@@ -154,27 +253,103 @@ def format_row(record: FrameRecord, meas: FrameMeasurement) -> dict[str, str]:
         "bbox_h": str(meas.bbox_h),
         "quality_flag": "|".join(meas.quality_flags),
         "scale_ok": "true" if meas.px_per_mm is not None else "false",
+        "solidity": _fmt(meas.solidity, FLOAT_DECIMALS["solidity"]),
+        "hull_area_px": _fmt(meas.hull_area_px, FLOAT_DECIMALS["hull_area_px"]),
+        "hull_area_cm2": _fmt(
+            _area_cm2(meas.hull_area_px, meas.px_per_mm), FLOAT_DECIMALS["hull_area_cm2"]
+        ),
+        "perimeter_px": _fmt(meas.perimeter_px, FLOAT_DECIMALS["perimeter_px"]),
+        "perimeter_cm": _fmt(
+            _length_cm(meas.perimeter_px, meas.px_per_mm), FLOAT_DECIMALS["perimeter_cm"]
+        ),
+        "ellipse_major_px": _fmt(meas.ellipse_major_px, FLOAT_DECIMALS["ellipse_major_px"]),
+        "ellipse_minor_px": _fmt(meas.ellipse_minor_px, FLOAT_DECIMALS["ellipse_minor_px"]),
+        "extent": _fmt(meas.extent, FLOAT_DECIMALS["extent"]),
+        "n_components": "" if meas.n_components is None else str(meas.n_components),
+        "experiment_id": record.experiment_id,
+        "biosource_id": record.biosource_id,
+        "observation_unit_id": record.observation_unit_id,
+        "treatment_id": record.treatment_id,
+        "light_regime": record.light_regime,
+        "exposure_s": _fmt(record.exposure_s, FLOAT_DECIMALS["exposure_s"]),
+        "white_balance": record.white_balance,
+        "gain_db": _fmt(record.gain_db, FLOAT_DECIMALS["gain_db"]),
+        "settings_source": record.settings_source,
     }
 
 
+def _write_rows_atomic(path: Path, rows: list[list[str]]) -> None:
+    """Write all CSV rows through a same-directory temp file + ``os.replace``."""
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerows(rows)
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+def _ensure_header(path: Path) -> None:
+    """Migrate a legacy strict-prefix header, or reject a foreign header.
+
+    A file whose header is a strict prefix of :data:`TIMESERIES_COLUMNS` has
+    every existing row padded with ``""`` for the appended columns and is
+    rewritten atomically. Any other mismatch raises.
+
+    Raises:
+        ValueError: If the header is neither exact nor a strict prefix.
+        OSError: If the store cannot be read/written.
+    """
+    if not path.exists() or path.stat().st_size == 0:
+        return
+    with path.open(newline="", encoding="utf-8") as f:
+        rows = list(csv.reader(f))
+    if not rows:
+        return
+    header = tuple(rows[0])
+    if header == TIMESERIES_COLUMNS:
+        return
+    if len(header) < len(TIMESERIES_COLUMNS) and header == TIMESERIES_COLUMNS[: len(header)]:
+        new_count = len(TIMESERIES_COLUMNS) - len(header)
+        padded = [
+            row[: len(header)] + [""] * max(0, len(header) - len(row)) + [""] * new_count
+            for row in rows[1:]
+        ]
+        _write_rows_atomic(path, [list(TIMESERIES_COLUMNS), *padded])
+        logger.info("migrated %d rows (+%d columns)", len(padded), new_count)
+        return
+    raise ValueError(
+        f"timeseries header mismatch: file={header} expected={TIMESERIES_COLUMNS}"
+    )
+
+
 def append_rows(path: str | Path, rows: Sequence[dict[str, str]]) -> int:
-    """Append rows to the store, writing the header only when creating it.
+    """Append rows to the store, writing/migrating the header as needed.
 
     Args:
         path: Store CSV path (parent dirs created on first write).
         rows: String rows keyed by :data:`TIMESERIES_COLUMNS`.
 
     Returns:
-        Number of rows appended (0 rows is a no-op that creates no file).
+        Number of rows appended (0 rows appends nothing and creates no file,
+        but still migrates an existing legacy header).
 
     Raises:
-        OSError: If the store cannot be written.
+        ValueError: If the store's header is not a prefix of
+            :data:`TIMESERIES_COLUMNS`.
+        OSError: If the store cannot be read/written.
     """
+    p = Path(path)
+    exists = p.exists() and p.stat().st_size > 0
+    if exists:
+        _ensure_header(p)
     if not rows:
         return 0
-    p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    exists = p.exists() and p.stat().st_size > 0
     with p.open("a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(TIMESERIES_COLUMNS))
         if not exists:

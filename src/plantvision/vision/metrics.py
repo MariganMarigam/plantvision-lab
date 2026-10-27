@@ -21,6 +21,7 @@ from plantvision.vision.io import load_image
 from plantvision.vision.quality import blur_score, brightness_score, quality_flags
 from plantvision.vision.scale import px_per_mm
 from plantvision.vision.segmentation import segment_plant
+from plantvision.vision.traits import ShapeTraits, compute_traits
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,13 @@ class FrameMeasurement:
     blur_lapvar: float
     brightness_mean: float
     quality_flags: tuple[str, ...]
+    hull_area_px: float | None = None
+    solidity: float | None = None
+    perimeter_px: float | None = None
+    ellipse_major_px: float | None = None
+    ellipse_minor_px: float | None = None
+    extent: float | None = None
+    n_components: int | None = None
 
     def as_row(self) -> dict:
         """Flat dict for CSV rows; quality flags joined with ``|``."""
@@ -235,6 +243,7 @@ def measure_frame(
     roi_fraction_pct = 100.0 * area_px / float(h_px * w_px)
     ppm = px_per_mm(img, cfg.scale.marker_size_mm, cfg.scale.aruco_dict)
     area_cm2, bbox_w_cm, bbox_h_cm = _cm_metrics(area_px, bw, bh, ppm)
+    traits: ShapeTraits | None = compute_traits(mask)
     measurement = FrameMeasurement(
         stem="",
         captured_at=None,
@@ -249,6 +258,13 @@ def measure_frame(
         blur_lapvar=blur_score(gray),
         brightness_mean=brightness_score(gray),
         quality_flags=tuple(flags),
+        hull_area_px=None if traits is None else traits.hull_area_px,
+        solidity=None if traits is None else traits.solidity,
+        perimeter_px=None if traits is None else traits.perimeter_px,
+        ellipse_major_px=None if traits is None else traits.ellipse_major_px,
+        ellipse_minor_px=None if traits is None else traits.ellipse_minor_px,
+        extent=None if traits is None else traits.extent,
+        n_components=None if traits is None else traits.n_components,
     )
     return measurement, mask
 

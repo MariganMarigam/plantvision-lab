@@ -1,10 +1,16 @@
-"""Zero-dependency EXIF reader: DateTimeOriginal + OffsetTimeOriginal from JPEG bytes.
+"""Zero-dependency EXIF reader for JPEG bytes.
 
-Pure function over bytes. Reads the APP1/EXIF segment, parses the TIFF block
-(little- or big-endian) and extracts tag 0x9003 (``DateTimeOriginal``) and tag
-0x9011 (``OffsetTimeOriginal``). Every failure mode — no EXIF, malformed
-segments, garbage TIFF, implausible dates — collapses to ``None``; the reader
-NEVER raises for any input.
+Pure functions over bytes. Reads the APP1/EXIF segment, parses the TIFF block
+(little- or big-endian) and extracts:
+
+- tag 0x9003 (``DateTimeOriginal``) and tag 0x9011 (``OffsetTimeOriginal``);
+- tag 0x829A (``ExposureTime``, RATIONAL);
+- tag 0xA403 (``WhiteBalance``, SHORT: 0 auto, 1 manual);
+- tag 0x8827 (``ISOSpeedRatings``, SHORT).
+
+Every failure mode — no EXIF, malformed segments, garbage TIFF, implausible
+dates — collapses to ``None`` / null fields; the readers NEVER raise for any
+input.
 """
 
 import struct
@@ -39,9 +45,9 @@ def _find_exif_tiff(data: bytes) -> bytes | None:
     return None
 
 
-def _ifd_entries(tiff: bytes, offset: int, endian: str) -> dict[int, str | int]:
+def _ifd_entries(tiff: bytes, offset: int, endian: str) -> dict[int, str | int | float]:
     """Parse the IFD entries at ``offset`` into a ``tag -> raw value`` dict."""
-    out: dict[int, str | int] = {}
+    out: dict[int, str | int | float] = {}
     if offset + 2 > len(tiff):
         return out
     count = int.from_bytes(tiff[offset : offset + 2], endian)
@@ -63,13 +69,21 @@ def _ifd_entries(tiff: bytes, offset: int, endian: str) -> dict[int, str | int]:
                 value = tiff[ptr : ptr + cnt]
         elif typ in (3, 4):  # SHORT / LONG
             value = int.from_bytes(raw[:2] if typ == 3 else raw, endian)
+        elif typ in (5, 10):  # RATIONAL / SRATIONAL
+            ptr = int.from_bytes(raw, endian)
+            if ptr + 8 > len(tiff):
+                continue
+            signed = typ == 10
+            numerator = int.from_bytes(tiff[ptr : ptr + 4], endian, signed=signed)
+            denominator = int.from_bytes(tiff[ptr + 4 : ptr + 8], endian, signed=signed)
+            value = numerator / denominator if denominator else 0.0
         else:
             continue
         out[tag] = value
     return out
 
 
-def _parse_tiff(tiff: bytes) -> dict[int, str | int]:
+def _parse_tiff(tiff: bytes) -> dict[int, str | int | float]:
     """Parse a TIFF block into a tag -> raw-value dict (IFD0 + Exif SubIFD)."""
     if tiff[:2] == b"II":
         endian = "little"
@@ -125,3 +139,38 @@ def read_exif_datetime(data: bytes) -> tuple[datetime, str] | None:
         return (dt, offset)
     except (IndexError, ValueError, TypeError, UnicodeDecodeError, struct.error):
         return None
+
+
+def read_exif_camera_settings(data: bytes) -> dict[str, float | str | None]:
+    """Extract camera settings from JPEG EXIF bytes.
+
+    Args:
+        data: Raw JPEG bytes.
+
+    Returns:
+        ``{"exposure_s": float | None, "white_balance": "auto" | "manual" |
+        None, "iso": int | None}``. Missing, malformed or unrecognised values
+        stay ``None`` — a setting is never guessed. Never raises.
+    """
+    settings: dict[str, float | str | None] = {
+        "exposure_s": None,
+        "white_balance": None,
+        "iso": None,
+    }
+    try:
+        tiff = _find_exif_tiff(data)
+        if tiff is None:
+            return settings
+        tags = _parse_tiff(tiff)
+        exposure = tags.get(0x829A)
+        if isinstance(exposure, (int, float)) and exposure > 0:
+            settings["exposure_s"] = float(exposure)
+        white_balance = tags.get(0xA403)
+        if isinstance(white_balance, int):
+            settings["white_balance"] = {0: "auto", 1: "manual"}.get(white_balance)
+        iso = tags.get(0x8827)
+        if isinstance(iso, int) and iso > 0:
+            settings["iso"] = int(iso)
+    except (IndexError, ValueError, TypeError, UnicodeDecodeError, struct.error):
+        return settings
+    return settings

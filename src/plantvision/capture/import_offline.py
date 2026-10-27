@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import json
 import shutil
+import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,7 @@ import numpy as np
 import yaml
 
 from plantvision.capture.capture_once import in_light_window
+from plantvision.capture.exif import read_exif_camera_settings
 from plantvision.capture.metadata import build_metadata
 from plantvision.capture.store import build_sha_index, store_original
 from plantvision.capture.timestamps import format_utc, resolve_captured_at, resolve_tz
@@ -213,9 +215,22 @@ def _process_one(path: Path, source: Path, cfg: dict, thresholds: dict[str, Any]
     if not in_light_window(local, window["start"], window["end"]):
         return FileDecision(str(path), "skipped_dark", reason="window", sha256=sha,
                             captured_at=captured_at, time_source=guess.source)
+    settings = read_exif_camera_settings(data)
+    settings_present = any(value is not None for value in settings.values())
     try:
-        meta = build_metadata(data, captured_at, cfg["camera_id"], cfg["zone_id"],
-                              crop_id=cfg.get("crop_id"))
+        meta = build_metadata(
+            data, captured_at, cfg["camera_id"], cfg["zone_id"],
+            crop_id=cfg.get("crop_id"),
+            experiment_id=cfg.get("experiment_id"),
+            biosource_id=cfg.get("biosource_id"),
+            observation_unit_id=cfg.get("observation_unit_id"),
+            treatment_id=cfg.get("treatment_id"),
+            light_regime=cfg.get("light_regime"),
+            exposure_s=settings["exposure_s"],
+            white_balance=settings["white_balance"],
+            gain_db=None,  # phone EXIF has no documented ISO -> dB conversion
+            settings_source="exif" if settings_present else "unavailable",
+        )
     except ValueError as exc:
         return FileDecision(str(path), "skipped_corrupt", reason="undecodable", sha256=sha,
                             message=str(exc))
@@ -366,6 +381,16 @@ def import_folder(source_dir: str | Path, config_path: str | Path, *,
             propagated to the CLI.
     """
     cfg = _load_config(config_path)
+    crop_id = cfg.get("crop_id")
+    biosource_id = cfg.get("biosource_id")
+    if crop_id and biosource_id and crop_id != biosource_id:
+        # Both keys are kept; the mismatch is a warning, never an import failure.
+        warnings.warn(
+            f"crop_id={crop_id!r} disagrees with biosource_id={biosource_id!r}; "
+            "both are kept in the sidecar",
+            RuntimeWarning,
+            stacklevel=2,
+        )
     originals = Path(cfg["originals_dir"])
     log_path = Path(cfg["log_path"])
     window = cfg.get("light_window", {"start": "06:00", "end": "22:00", "tz": "local"})

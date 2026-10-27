@@ -386,3 +386,67 @@ def test_archive_preserves_subdirs_and_avoids_collision(tmp_path: Path) -> None:
     assert result.moved == 1
     sha8 = result.decisions[0].sha256[:8]
     assert (src / "_imported" / "sub" / f"f_{sha8}.jpg").exists()
+
+
+# --- P1.5.4 camera settings + P1.5.2 provenance ---------------------------
+
+
+def test_import_reads_camera_settings_from_exif(tmp_path: Path) -> None:
+    """ExposureTime/WhiteBalance are recorded with settings_source=exif."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "frame.jpg").write_bytes(
+        jpeg_with_exif(_noon(), "+00:00", bgr=_bright_bgr(),
+                       exposure_s=0.02, white_balance=0, iso=400)
+    )
+    cfg_path = _config(tmp_path)
+    result = import_folder(src, cfg_path)
+    assert result.imported == 1
+    side = json.loads(store_sidecars(cfg_path)[0].read_text(encoding="utf-8"))
+    assert side["exposure_s"] == pytest.approx(0.02)
+    assert side["white_balance"] == "auto"
+    assert side["gain_db"] is None
+    assert side["settings_source"] == "exif"
+
+
+def test_import_without_camera_exif_marks_settings_unavailable(tmp_path: Path) -> None:
+    """No camera EXIF: all settings null and settings_source=unavailable."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "frame.jpg").write_bytes(jpeg_with_exif(_noon(), "+00:00", bgr=_bright_bgr()))
+    cfg_path = _config(tmp_path)
+    result = import_folder(src, cfg_path)
+    assert result.imported == 1
+    side = json.loads(store_sidecars(cfg_path)[0].read_text(encoding="utf-8"))
+    assert side["exposure_s"] is None
+    assert side["white_balance"] is None
+    assert side["gain_db"] is None
+    assert side["settings_source"] == "unavailable"
+
+
+def test_import_manual_white_balance_maps_to_manual(tmp_path: Path) -> None:
+    """EXIF WhiteBalance=1 becomes 'manual', never guessed beyond the enum."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "frame.jpg").write_bytes(
+        jpeg_with_exif(_noon(), "+00:00", bgr=_bright_bgr(), white_balance=1)
+    )
+    cfg_path = _config(tmp_path)
+    import_folder(src, cfg_path)
+    side = json.loads(store_sidecars(cfg_path)[0].read_text(encoding="utf-8"))
+    assert side["white_balance"] == "manual"
+    assert side["settings_source"] == "exif"
+
+
+def test_import_always_emits_provenance_keys(tmp_path: Path) -> None:
+    """Every sidecar carries the nine provenance keys (value or null)."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "frame.jpg").write_bytes(jpeg_with_exif(_noon(), "+00:00", bgr=_bright_bgr()))
+    cfg_path = _config(tmp_path)
+    import_folder(src, cfg_path)
+    side = json.loads(store_sidecars(cfg_path)[0].read_text(encoding="utf-8"))
+    for key in ("experiment_id", "biosource_id", "observation_unit_id", "treatment_id",
+                "light_regime", "exposure_s", "white_balance", "gain_db",
+                "settings_source"):
+        assert key in side
