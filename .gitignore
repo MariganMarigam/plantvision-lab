@@ -20,3 +20,5 @@ checkpoints/
 vendor/
 data/labels/*/overlays/
 data/labels/*/export/
+experiments/*
+!experiments/.gitkeep

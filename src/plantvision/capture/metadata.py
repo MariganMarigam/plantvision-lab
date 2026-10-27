@@ -42,7 +42,7 @@ def build_metadata(
         captured_at: ISO-8601 UTC timestamp ending in "Z" (device clock).
         camera_id: Camera identifier (e.g. "phone-01").
         zone_id: Grow-zone identifier (e.g. "shelf-a/tray-1").
-        crop_id: Optional crop key (e.g. "basil"). Omitted from the result when
+        crop_id: Optional crop key (for example the configured crop id). Omitted from the result when
             ``None``, so legacy sidecars stay unchanged.
         experiment_id: MIAPPE experiment/investigation id (e.g. "basil-2026-10").
         biosource_id: MIAPPE biological source / cultivar (e.g. "basil-genovese").

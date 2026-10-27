@@ -1,0 +1,3 @@
+# Local model registry. Populated only by scripts/eval_segformer.py --register.
+# Keys: "<crop_id>:<arch>-<variant>:<version>". Checkpoints stay local (*.pt is gitignored).
+models: {}

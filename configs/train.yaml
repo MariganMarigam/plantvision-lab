@@ -1,0 +1,54 @@
+seed: 1337
+device: auto
+amp: true
+amp_dtype: bfloat16
+epochs: 80
+batch_size: 8
+num_workers: 4
+lr: 0.00006
+weight_decay: 0.01
+warmup_epochs: 3
+grad_clip_norm: 1.0
+image_size: [512, 288]          # H, W; exact 0.4x of the portrait 1280x720 frames
+threshold: 0.5
+crop_id: basil
+model_id: "basil:segformer-b0:v1"
+model:
+  arch: segformer
+  encoder: mit_b0
+  encoder_weights: imagenet
+  classes: 1
+  decoder_channels: 256
+loss: {bce_weight: 0.5, dice_weight: 0.5, dice_eps: 1.0}
+dataset:
+  root: data/labels/farm02-v1/export/yolo-seg
+  manifest: data/labels/farm02-v1/manifest.csv
+  sam2_masks: data/labels/farm02-v1/masks
+  expected_image_size: [1280, 720]
+augmentation:
+  hflip_p: 0.5
+  vflip_p: 0.3
+  shift_limit: 0.05
+  scale_limit: 0.1
+  rotate_limit: 15.0
+  brightness_limit: 0.2
+  contrast_limit: 0.2
+  gamma_limit: [80, 120]
+  blur_p: 0.15
+checkpoint:
+  dir: experiments
+  monitor: val_dice
+  save_top_k: 1
+  early_stop_patience: 20
+  early_stop_min_delta: 0.0001
+registry:
+  path: configs/perception-registry.yaml
+gate:
+  min_val_dice: 0.85
+  min_test_dice: 0.85
+  min_test_iou: 0.75
+  min_test_recall: 0.90
+  max_area_abs_pct_error_median: 5.0
+  max_area_abs_pct_error_p90: 10.0
+  max_vram_gb: 7.0
+  max_train_minutes: 60.0
