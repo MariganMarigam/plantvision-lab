@@ -1,4 +1,4 @@
-"""Box-prompt priors for SAM2: classical HSV, full frame, manual, ridge.
+"""Box-prompt priors for SAM2: classical HSV, full frame, manual, ridge, marker.
 
 ``roi_box`` is the frozen classical prior (HSV green-mask bbox expanded
 for SAM2). ``prior_box`` dispatches across the P1.1 strategies and always
@@ -15,8 +15,26 @@ import numpy as np
 
 from plantvision.vision.interfaces import perception
 
-BOX_STRATEGIES: tuple[str, ...] = ("classical", "full", "manual", "ridge")
+BOX_STRATEGIES: tuple[str, ...] = (
+    "classical",
+    "full",
+    "manual",
+    "ridge",
+    "marker",
+)
 """Strategies accepted by :func:`prior_box`."""
+
+MARKER_LEFT: float = 2.2
+MARKER_RIGHT: float = 3.2
+MARKER_ABOVE: float = 5.2
+MARKER_BELOW: float = 0.4
+"""Marker-box offsets to the left/right/above/below, as multiples of ``s``."""
+
+MIN_MARKER_SIDE_PX: int = 8
+"""Smallest accepted marker mean side ``s`` in pixels (guards degeneracy)."""
+
+MIN_BOX_SIDE_PX: int = 8
+"""Smallest accepted marker-derived box side in pixels after clipping."""
 
 Prior = tuple[tuple[int, int, int, int], str]
 """A prompt box plus the ``box_source`` label that actually produced it."""
@@ -210,6 +228,57 @@ def _ridge_box(
     )
 
 
+def _marker_box(image_bgr: np.ndarray) -> tuple[int, int, int, int] | None:
+    """Marker-relative blurple prior: box offset above the ArUco tag.
+
+    The capture rig mounts a ``DICT_5X5_50`` ArUco marker beside the basil
+    tray. For the largest detected marker, with bounding-box size ``w`` x
+    ``h``, centre ``(cx, cy)`` and scale ``s = (w + h) / 2``, the plant box
+    is::
+
+        (cx - 2.2s, cy - 5.2s, cx + 3.2s, cy - 0.4s)
+
+    (inclusive pixel indices), clipped to the frame. Detections whose mean
+    side ``s`` is below ``MIN_MARKER_SIDE_PX``, or whose clipped box side
+    is below ``MIN_BOX_SIDE_PX``, are rejected as degenerate.
+
+    Args:
+        image_bgr: BGR uint8 image with shape ``(H, W, 3)``.
+
+    Returns:
+        Inclusive ``(x1, y1, x2, y2)`` box, or ``None`` when no usable
+        marker is detected.
+    """
+    aruco = getattr(cv2, "aruco", None)
+    if aruco is None:
+        return None
+    dictionary = aruco.getPredefinedDictionary(aruco.DICT_5X5_50)
+    if hasattr(aruco, "ArucoDetector"):
+        detector = aruco.ArucoDetector(dictionary, aruco.DetectorParameters())
+        corners, ids, _ = detector.detectMarkers(image_bgr)
+    else:
+        corners, ids, _ = aruco.detectMarkers(image_bgr, dictionary)
+    if ids is None or len(corners) == 0:
+        return None
+    rects = [
+        cv2.boundingRect(pts.reshape(-1, 2).astype(np.float32))
+        for pts in corners
+    ]
+    x, y, w, h = max(rects, key=lambda rect: rect[2] * rect[3])
+    s = (w + h) / 2.0
+    if s < MIN_MARKER_SIDE_PX:
+        return None
+    cx, cy = x + w / 2.0, y + h / 2.0
+    height, width = image_bgr.shape[:2]
+    x1 = max(0, int(round(cx - MARKER_LEFT * s)))
+    y1 = max(0, int(round(cy - MARKER_ABOVE * s)))
+    x2 = min(width - 1, int(round(cx + MARKER_RIGHT * s)))
+    y2 = min(height - 1, int(round(cy - MARKER_BELOW * s)))
+    if x2 - x1 + 1 < MIN_BOX_SIDE_PX or y2 - y1 + 1 < MIN_BOX_SIDE_PX:
+        return None
+    return (x1, y1, x2, y2)
+
+
 def prior_box(
     image_bgr: np.ndarray,
     *,
@@ -230,6 +299,8 @@ def prior_box(
               clipped to the frame.
             - ``"ridge"``: blurple-safe brightness/saturation texture ridge
               plus largest connected component (see :func:`_ridge_box`).
+            - ``"marker"``: box offset above the ``DICT_5X5_50`` ArUco tag
+              mounted beside the tray (see :func:`_marker_box`).
         box: Manual inclusive ``(x1, y1, x2, y2)`` box; required and only
             used when ``strategy == "manual"``.
         expand: Expansion factor for automatic priors, in ``[0.0, 1.0]``.
@@ -239,8 +310,8 @@ def prior_box(
     Returns:
         ``(box, source)`` where ``source`` is the label of the prior that
         actually produced the box: ``"hsv"``, ``"full_frame"``,
-        ``"manual"`` or ``"ridge"``. Automatic strategies fall back to the
-        full frame, labelled ``"full_frame"``.
+        ``"manual"``, ``"ridge"`` or ``"marker"``. Automatic strategies fall
+        back to the full frame, labelled ``"full_frame"``.
 
     Raises:
         ValueError: If the image is not 3-channel, the strategy is unknown,
@@ -262,5 +333,8 @@ def prior_box(
     if strategy == "ridge":
         candidate = _ridge_box(image_bgr, expand, min_area_frac)
         return (candidate, "ridge") if candidate is not None else (full, "full_frame")
+    if strategy == "marker":
+        candidate = _marker_box(image_bgr)
+        return (candidate, "marker") if candidate is not None else (full, "full_frame")
     candidate = roi_box(image_bgr, expand=expand, min_area_frac=min_area_frac)
     return (candidate, "hsv") if candidate is not None else (full, "full_frame")

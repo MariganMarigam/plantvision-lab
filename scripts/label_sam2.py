@@ -1,10 +1,11 @@
 """Batch SAM2 label proposer CLI (plan Step 8, P1.1 box strategies).
 
 For every sha-keyed frame under ``--originals``: compute a box prompt with
-``--box-strategy`` (classical HSV, full frame, manual ``--box``, or the
-blurple-safe ridge prior), ask SAM2 for a mask, store mask + overlay +
-proposal line. Idempotent by sha256: a frame is skipped when its mask PNG
-exists AND a proposal line is already in the log, unless ``--force``.
+``--box-strategy`` (classical HSV, full frame, manual ``--box``, the
+blurple-safe ridge prior, or the marker-relative ArUco prior), ask SAM2 for
+a mask, store mask + overlay + proposal line. Idempotent by sha256: a frame
+is skipped when its mask PNG exists AND a proposal line is already in the
+log, unless ``--force``.
 """
 
 from __future__ import annotations
@@ -51,7 +52,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--expand", type=float, default=0.15)
     p.add_argument("--box-strategy", choices=BOX_STRATEGIES,
                    default="classical",
-                   help="box prior: classical HSV, full frame, manual, or ridge")
+                   help="box prior: classical HSV, full frame, manual, "
+                        "ridge, or marker-relative ArUco")
     p.add_argument("--box", type=_parse_box, default=None,
                    help="manual prompt box x1,y1,x2,y2 "
                         "(requires --box-strategy manual)")

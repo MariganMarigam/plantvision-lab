@@ -92,7 +92,7 @@ def test_prior_box_rejects_unknown_strategy() -> None:
 
 def test_prior_box_rejects_non_bgr_input_for_every_strategy() -> None:
     gray = np.zeros((10, 20), dtype=np.uint8)
-    for strategy in ("classical", "full", "manual", "ridge"):
+    for strategy in ("classical", "full", "manual", "ridge", "marker"):
         with pytest.raises(ValueError, match="3-channel|shape"):
             prior_box(gray, strategy=strategy, box=(0, 0, 5, 5))
 
@@ -184,6 +184,72 @@ def test_prior_box_ridge_rejects_bad_expand() -> None:
     img = _blurple_texture_image()
     with pytest.raises(ValueError, match="expand"):
         prior_box(img, strategy="ridge", expand=1.5)
+
+
+# --- marker strategy -----------------------------------------------------
+
+
+def _image_with_aruco(
+    shape: tuple[int, int] = (480, 640),
+    origin: tuple[int, int] = (200, 100),
+    marker_px: int = 120,
+    marker_id: int = 2,
+) -> np.ndarray:
+    """Paste a synthetic ``DICT_5X5_50`` marker into a flat BGR canvas.
+
+    Args:
+        shape: Canvas ``(H, W)``.
+        origin: Top-left pixel ``(x, y)`` of the pasted marker.
+        marker_px: Marker side in pixels.
+        marker_id: ArUco marker id to render.
+
+    Returns:
+        BGR uint8 canvas with the marker pasted at ``origin``.
+    """
+    dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_50)
+    marker = cv2.aruco.generateImageMarker(dictionary, marker_id, marker_px)
+    img = np.full((shape[0], shape[1], 3), 128, dtype=np.uint8)
+    x, y = origin
+    img[y : y + marker_px, x : x + marker_px] = cv2.cvtColor(
+        marker, cv2.COLOR_GRAY2BGR
+    )
+    return img
+
+
+def test_prior_box_marker_places_box_above_marker() -> None:
+    """Synthetic ArUco marker -> ``marker`` box above it, clipped to frame."""
+    img = _image_with_aruco()
+    box, source = prior_box(img, strategy="marker")
+    assert source == "marker"
+    x1, y1, x2, y2 = box
+    assert all(isinstance(v, int) for v in box)
+    # Box spans the marker horizontally and sits above the marker centre.
+    assert x1 < 200 and x2 > 320
+    assert y1 < 100
+    assert y2 < 100 + 60
+    assert 0 <= x1 <= x2 < 640 and 0 <= y1 <= y2 < 480
+
+
+def test_prior_box_marker_clips_at_frame_border() -> None:
+    """A marker near the top-left edge yields a frame-clipped box."""
+    img = _image_with_aruco(origin=(20, 10))
+    box, source = prior_box(img, strategy="marker")
+    assert source == "marker"
+    x1, y1, x2, y2 = box
+    assert x1 == 0 and y1 == 0
+    assert 0 <= x2 < 640 and 0 <= y2 < 480
+
+
+def test_prior_box_marker_falls_back_without_marker() -> None:
+    """No ArUco marker -> full frame, honestly labelled ``full_frame``."""
+    img = np.full((60, 80, 3), 128, dtype=np.uint8)
+    assert prior_box(img, strategy="marker") == ((0, 0, 79, 59), "full_frame")
+
+
+def test_prior_box_cli_accepts_marker_strategy() -> None:
+    """``--box-strategy marker`` is a valid CLI choice."""
+    parse_args = _load_label_script().parse_args
+    assert parse_args(["--box-strategy", "marker"]).box_strategy == "marker"
 
 
 def _load_label_script():
