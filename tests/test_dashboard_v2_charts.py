@@ -38,7 +38,7 @@ def _attrs(markup: str, tag: str) -> list[dict[str, str]]:
     """Return attributes of every ``<tag ...>`` occurrence."""
     found: list[dict[str, str]] = []
     for match in re.finditer(rf"<{tag}\b([^>]*)>", markup):
-        attrs = dict(re.findall(r'([a-zA-Z-]+)="([^"]*)"', match.group(1)))
+        attrs = dict(re.findall(r'([a-zA-Z0-9-]+)="([^"]*)"', match.group(1)))
         found.append(attrs)
     return found
 
@@ -126,6 +126,27 @@ def test_single_series_keeps_one_end_label() -> None:
     markup = line_chart(SPEC, [PlotSeries("A", [[(0, 1.0), (1000, 2.0)]], label="only")])
     assert markup.count('class="pv-last"') == 1
     assert 'class="pv-series-legend"' not in markup
+
+
+def test_multi_series_legend_draws_three_visible_swatches() -> None:
+    markup = line_chart(
+        SPEC,
+        [
+            PlotSeries("A", [[(0, 1.0), (1000, 2.0)]], label="basil"),
+            PlotSeries("B", [[(0, 2.0), (1000, 3.0)]], label="lettuce"),
+            PlotSeries("C", [[(0, 3.0), (1000, 4.0)]], label="phone"),
+        ],
+    )
+    swatches = [a for a in _attrs(markup, "line") if a.get("class") == "pv-swatch"]
+    assert len(swatches) == 3
+    strokes = {swatch["stroke"] for swatch in swatches}
+    assert len(strokes) == 3
+    # Resolved paint, not a url(#...) that depends on a cloned <defs> block.
+    assert all(not stroke.startswith("url(#") for stroke in strokes)
+    for swatch in swatches:
+        assert float(swatch["x2"]) - float(swatch["x1"]) == 16.0
+        assert swatch["stroke-width"] == "3"
+        assert swatch["stroke-linecap"] == "round"
 
 
 def test_grouped_bars_enforce_minimum_width_and_gap() -> None:

@@ -259,6 +259,60 @@ def test_russian_build_uses_ru_html_lang(tmp_path: Path) -> None:
     assert "Рост" in html
 
 
+RAIL_LABELS = {
+    "en": [
+        "Overview",
+        "Crops",
+        "Growth",
+        "Shape",
+        "Quality",
+        "Alerts",
+        "Compare",
+        "Capture",
+        "Method",
+    ],
+    "ru": [
+        "Обзор",
+        "Культуры",
+        "Рост",
+        "Форма",
+        "Качество",
+        "Алерты",
+        "Сравнение",
+        "Съёмка",
+        "Метод",
+    ],
+}
+
+
+def test_rail_labels_are_short_and_titled(tmp_path: Path) -> None:
+    panels = _panels(tmp_path)
+    for lang, expected in RAIL_LABELS.items():
+        out = tmp_path / f"rail-{lang}.html"
+        build_report(
+            panels, out, now=NOW, title="T", include_frames=False, lang=lang
+        )
+        html = out.read_text(encoding="utf-8")
+        rail = re.search(r'<aside class="pv-rail".*?</aside>', html, re.S)
+        assert rail is not None
+        markup = rail.group(0)
+        labels = re.findall(
+            r'<span class="pv-rail-lbl"[^>]*>(.*?)</span>', markup, re.S
+        )
+        assert labels == expected
+        assert all(len(label) <= 9 for label in labels), (lang, labels)
+        buttons = re.findall(r"<button [^>]*role=\"tab\"[^>]*>", markup)
+        assert len(buttons) == 9
+        assert all(re.search(r'\btitle="[^"]+"', button) for button in buttons)
+        assert all(re.search(r'\baria-label="[^"]+"', button) for button in buttons)
+
+
+def test_overview_conclusion_names_the_freshness_budget() -> None:
+    for key in ("ch-ov-kpi-rings.conclusion", "ch-ov-status-board.conclusion"):
+        assert "freshness budget" in TEXTS["en"][key]
+        assert "бюджет свежести" in TEXTS["ru"][key]
+
+
 def test_gate_one_shell_has_seven_coming_soon_tabs(page) -> None:
     html, _result, _panels = page
     assert html.count('class="pv-empty pv-coming"') == 7

@@ -81,6 +81,15 @@ _UI_EN: dict[str, str] = {
     "ui.tab.compare": "Compare",
     "ui.tab.capture": "Capture",
     "ui.tab.method": "Method",
+    "ui.rail.overview": "Overview",
+    "ui.rail.crops": "Crops",
+    "ui.rail.growth": "Growth",
+    "ui.rail.shape": "Shape",
+    "ui.rail.data-quality": "Quality",
+    "ui.rail.alerts": "Alerts",
+    "ui.rail.compare": "Compare",
+    "ui.rail.capture": "Capture",
+    "ui.rail.method": "Method",
     "ui.sub.overview.status": "status",
     "ui.sub.overview.kpi": "kpi",
     "ui.sub.growth.area-px": "area px",
@@ -150,6 +159,15 @@ _UI_RU: dict[str, str] = {
     "ui.tab.compare": "Сравнение",
     "ui.tab.capture": "Съёмка",
     "ui.tab.method": "Метод",
+    "ui.rail.overview": "Обзор",
+    "ui.rail.crops": "Культуры",
+    "ui.rail.growth": "Рост",
+    "ui.rail.shape": "Форма",
+    "ui.rail.data-quality": "Качество",
+    "ui.rail.alerts": "Алерты",
+    "ui.rail.compare": "Сравнение",
+    "ui.rail.capture": "Съёмка",
+    "ui.rail.method": "Метод",
     "ui.sub.overview.status": "статус",
     "ui.sub.overview.kpi": "показатели",
     "ui.sub.growth.area-px": "площадь px",
@@ -196,8 +214,8 @@ _CARD_EN: dict[str, str] = {
         "{shape_list}."
     ),
     "ch-ov-kpi-rings.conclusion": (
-        "{inside} of {panels} panels are inside budget; {worst} is the binding "
-        "constraint because {rule} is {rule_value} {unit}."
+        "{inside} of {panels} panels are within the freshness budget; {worst} is "
+        "the binding constraint because {rule} is {rule_value} {unit}."
     ),
     "ch-ov-frames-bars.title": "Frames per UTC day",
     "ch-ov-frames-bars.what": (
@@ -237,8 +255,8 @@ _CARD_EN: dict[str, str] = {
         "{verdict_list}."
     ),
     "ch-ov-status-board.conclusion": (
-        "{healthy} of {panels} panels are inside budget; {worst} shows "
-        "{worst_verdict}."
+        "{healthy} of {panels} panels are within the freshness budget; {worst} "
+        "shows {worst_verdict}."
     ),
     "ch-ov-severity-donut.title": "Findings by severity",
     "ch-ov-severity-donut.what": (
@@ -392,8 +410,8 @@ _CARD_RU: dict[str, str] = {
         "{shape_list}."
     ),
     "ch-ov-kpi-rings.conclusion": (
-        "{inside} из {panels} панелей в пределах бюджета; «{worst}» — узкое "
-        "место, потому что {rule} = {rule_value} {unit}."
+        "{inside} из {panels} панелей укладываются в бюджет свежести; «{worst}» — "
+        "узкое место, потому что {rule} = {rule_value} {unit}."
     ),
     "ch-ov-frames-bars.title": "Кадры по суткам UTC",
     "ch-ov-frames-bars.what": (
@@ -434,7 +452,7 @@ _CARD_RU: dict[str, str] = {
         "{verdict_list}."
     ),
     "ch-ov-status-board.conclusion": (
-        "{healthy} из {panels} панелей в пределах бюджета; «{worst}» — "
+        "{healthy} из {panels} панелей укладываются в бюджет свежести; «{worst}» — "
         "{worst_verdict}."
     ),
     "ch-ov-severity-donut.title": "Находки по важности",

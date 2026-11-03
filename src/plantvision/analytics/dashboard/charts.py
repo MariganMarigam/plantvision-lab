@@ -158,6 +158,14 @@ _SLOT_STROKE = {
 }
 _SLOT_DASH = {"A": "", "B": ' stroke-dasharray="6 4"', "C": ' stroke-dasharray="1 3"'}
 _SLOT_KIND = {"A": "ok", "B": "warn", "C": "ok"}
+# Swatches use resolved colours, not url(#...): a horizontal <line> has a
+# zero-height gradient bounding box and loses the paint when a chart is cloned
+# into the drawer without its <defs>.
+_SLOT_SWATCH_STROKE = {
+    "A": "#F5705E",
+    "B": "#C159F5",
+    "C": "var(--pv-pos)",
+}
 
 
 def _defs() -> str:
@@ -433,17 +441,18 @@ def _series_legend(series: Sequence[PlotSeries], spec: ChartSpec) -> str:
         x = PAD_L + index * slot_width
         slot = item.slot if item.slot in _SLOT_STROKE else "A"
         parts.append(
-            f'<line x1="{num(x)}" y1="{LEGEND_Y}" x2="{num(x + 12)}" '
-            f'y2="{LEGEND_Y}" stroke="{_SLOT_STROKE[slot]}" stroke-width="3" '
-            'stroke-linecap="round"/>'
+            f'<line class="pv-swatch" x1="{num(x)}" y1="{num(LEGEND_Y)}" '
+            f'x2="{num(x + 16)}" y2="{num(LEGEND_Y)}" '
+            f'stroke="{_SLOT_SWATCH_STROKE[slot]}" stroke-width="3" '
+            f'stroke-linecap="round"{_SLOT_DASH[slot]}/>'
         )
         last = item.runs[-1][-1]
         label = item.label or slot
-        limit = max(4, int((slot_width - 26) / 6.2))
+        limit = max(4, int((slot_width - 30) / 6.2))
         if len(label) > limit:
             label = label[:limit - 1] + "…"
         value = f"{num(last[1], spec.decimals)} {spec.unit}".strip()
-        parts.append(text(x + 18, LEGEND_Y + 4, f"{label} · {value}", cls="pv-legend"))
+        parts.append(text(x + 22, LEGEND_Y + 4, f"{label} · {value}", cls="pv-legend"))
     parts.append("</g>")
     return "".join(parts)
 

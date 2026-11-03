@@ -54,7 +54,7 @@ a:hover{text-decoration:underline}
 .pv-rail button:hover{background:rgba(255,255,255,.06);color:var(--pv-head)}
 .pv-rail button[aria-selected=true]{background:linear-gradient(155deg,var(--pv-a0),var(--pv-a1));color:#241F42}
 .pv-rail svg{width:20px;height:20px;flex:none}
-.pv-rail-lbl{font-size:9.5px;line-height:1;letter-spacing:.02em;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv-rail-lbl{font-size:9.5px;line-height:1;letter-spacing:.02em;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pv-badge{position:absolute;transform:translate(16px,-14px);background:var(--pv-pos);color:#10251C;border-radius:999px;font-size:9px;font-weight:700;padding:1px 5px}
 .pv-shell{min-width:0}
 .pv-topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:18px;padding:10px 20px;
@@ -242,6 +242,9 @@ def _rail(payload: dict[str, object], active: str, lang: str) -> str:
         tabindex = "0" if tab == active else "-1"
         label_en = TEXTS["en"][f"ui.tab.{tab}"]
         label_ru = TEXTS["ru"][f"ui.tab.{tab}"]
+        short_en = TEXTS["en"][f"ui.rail.{tab}"]
+        short_ru = TEXTS["ru"][f"ui.rail.{tab}"]
+        full_label = label_en if lang == "en" else label_ru
         badge_html = (
             f'<span class="pv-badge">{badge}</span>'
             if tab == "alerts" and badge
@@ -250,12 +253,13 @@ def _rail(payload: dict[str, object], active: str, lang: str) -> str:
         buttons.append(
             f'<button type="button" role="tab" id="pv-tab-{tab}" data-tab="{tab}" '
             f'aria-controls="pv-panel-{tab}" aria-selected="{selected}" '
-            f'tabindex="{tabindex}" title="{esc(label_en)}">'
+            f'tabindex="{tabindex}" title="{esc(full_label)}" '
+            f'aria-label="{esc(full_label)}">'
             f'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" '
             f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" '
             f'aria-hidden="true"><path d="{esc(ICONS[_ICON_KEY.get(tab, tab)])}"/></svg>'
-            f'<span class="pv-rail-lbl" data-en="{esc(label_en)}" '
-            f'data-ru="{esc(label_ru)}">{esc(label_en if lang == "en" else label_ru)}</span>'
+            f'<span class="pv-rail-lbl" data-en="{esc(short_en)}" '
+            f'data-ru="{esc(short_ru)}">{esc(short_en if lang == "en" else short_ru)}</span>'
             f"{badge_html}</button>"
         )
     return (
