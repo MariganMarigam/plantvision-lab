@@ -9,6 +9,7 @@ import pytest
 from plantvision.analytics.rules import (
     SEVERITY_ORDER,
     RuleConfig,
+    _fmt_ts,
     evaluate_rules,
 )
 from plantvision.analytics.timeseries import TIMESERIES_COLUMNS
@@ -276,4 +277,53 @@ def test_time_relative_rules_state_as_of_when_data_is_stale() -> None:
     assert stalls and "(as of " in stalls[0].detail
     assert quality and "(as of " in quality[0].detail
     assert "over the last 24 h" in stalls[0].detail
+
+
+def test_fmt_ts_renders_compact_utc_day_month_time() -> None:
+    """The shared detail formatter is UTC, minute precision, no ISO noise."""
+    assert _fmt_ts("2026-10-27T15:48:29+00:00") == "27 Oct 15:48 UTC"
+    assert _fmt_ts(datetime(
+        2026, 10, 27, 17, 48, tzinfo=timezone(timedelta(hours=2))
+    )) == "27 Oct 15:48 UTC"
+    assert _fmt_ts(None) == ""
+    assert _fmt_ts("not-a-date") == ""
+
+
+def test_rule_details_use_compact_timestamps() -> None:
+    """Capture-gap and stale-data details never leak raw ISO strings."""
+    gap_rows = [
+        _row(captured_at="2026-10-30T00:00:00Z"),
+        _row(sha256="y", captured_at="2026-10-30T13:00:00Z"),
+    ]
+    gap = next(
+        finding for finding in evaluate_rules(gap_rows, now=NOW)
+        if finding.rule_id == "capture-gap"
+    )
+    assert "30 Oct 00:00 UTC" in gap.detail
+    assert "30 Oct 13:00 UTC" in gap.detail
+    assert "T00:00:00" not in gap.detail
+
+    stale = next(
+        finding
+        for finding in evaluate_rules(
+            [_row(captured_at="2026-10-16T00:00:00Z")], now=NOW
+        )
+        if finding.rule_id == "stale-data"
+    )
+    assert "last frame 16 Oct 00:00 UTC" in stale.detail
+    assert "now 01 Nov 12:00 UTC" in stale.detail
+    assert "+00:00" not in stale.detail
+
+
+def test_growth_stall_detail_uses_middle_dot_not_em_dash() -> None:
+    """The remaining em-dash in the stall prose becomes a middle dot."""
+    values = [1000 + (0.5 if index % 2 else -0.5) for index in range(12)]
+    rows = _series(values, start="2026-10-16T00:00:00Z")
+    stalls = [
+        finding for finding in evaluate_rules(rows, now=NOW)
+        if finding.rule_id == "growth-stall"
+    ]
+    assert stalls
+    assert "—" not in stalls[0].detail
+    assert " · below the 2% change floor" in stalls[0].detail
 

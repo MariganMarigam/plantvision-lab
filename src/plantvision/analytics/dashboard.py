@@ -401,21 +401,25 @@ def render_shape_chart(
     fig, ax = plt.subplots(figsize=(9, 3.2))
     _style_axes(ax, ylabel="ratio (0-1)", fig=fig)
     colors = {"solidity": "#e0a800", "extent": "#ab47bc"}
+    handles: list[object] = []
+    labels: list[str] = []
     for metric, points in series.items():
         if not points:
             continue
-        for run in _split_runs(points):
-            ax.plot(
-                [point[0] for point in run],
-                [point[1] for point in run],
-                color=colors[metric], linewidth=1.4, label=metric,
+        for index, run in enumerate(_split_runs(points)):
+            xs = [point[0] for point in run]
+            ys = [point[1] for point in run]
+            ax.plot(xs, ys, color=colors[metric], linewidth=1.4)
+            # Split runs must not duplicate the legend label: only the first
+            # run of each metric contributes a handle.
+            artist = ax.scatter(
+                xs, ys, s=12, color=colors[metric],
+                label=metric if index == 0 else None,
             )
-            ax.scatter(
-                [point[0] for point in run],
-                [point[1] for point in run],
-                s=12, color=colors[metric],
-            )
-    legend = ax.legend()
+            if index == 0:
+                handles.append(artist)
+                labels.append(metric)
+    legend = ax.legend(handles=handles, labels=labels)
     for text in legend.get_texts():
         text.set_color("#e8ede9")
     _format_time_axis(ax, fig)
@@ -597,7 +601,10 @@ table {
 caption { text-align: left; color: var(--muted); padding-bottom: var(--space-2); }
 td, th { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
 th[scope=col] { color: var(--muted); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.04em; }
-table.alert-table { table-layout: fixed; }
+/* Dense alert table: Detail gets 34%; the font scale keeps long rule ids
+   intact and every row under ~90px at a 1100px viewport. */
+table.alert-table { table-layout: fixed; font-size: 0.85rem; }
+.alert-table th[scope=col] { font-size: 0.8em; }
 /* Only the rule id is unbreakable; it is one token (e.g. a rule_id). */
 .alert-table td:nth-child(3) { white-space: nowrap; }
 /* Detail prose may contain long comma/ISO tokens: break them, never bleed. */
@@ -762,9 +769,9 @@ def _alerts_section(
         "<h2>Alerts</h2>"
         '<table class="alert-table">'
         '<colgroup>'
-        '<col style="width:11%"><col style="width:18%"><col style="width:24%">'
-        '<col style="width:18%"><col style="width:7%"><col style="width:10%">'
-        '<col style="width:12%">'
+        '<col style="width:9%"><col style="width:15%"><col style="width:18%">'
+        '<col style="width:34%"><col style="width:7%"><col style="width:7%">'
+        '<col style="width:10%">'
         "</colgroup>"
         "<caption>Rule findings (deterministic)</caption>"
         "<thead><tr>"

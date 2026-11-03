@@ -17,6 +17,7 @@ from plantvision.analytics.dashboard import (
     load_rows,
     render_charts,
     render_series_chart,
+    render_shape_chart,
     summarize,
     write_dashboard,
 )
@@ -250,6 +251,35 @@ def test_plots_split_runs_on_capture_gap() -> None:
     assert [len(run) for run in plot_runs(points)] == [3, 2]
 
 
+def test_shape_chart_legend_lists_each_metric_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Split runs must not repeat solidity/extent legend entries."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from matplotlib.axes import Axes
+
+    rows = _dataset_rows(6)
+    base = datetime(2026, 10, 31, 0, 0, tzinfo=timezone.utc)
+    for row, hour in zip(rows, (0, 1, 2, 12, 13, 14)):
+        row["captured_at"] = (base + timedelta(hours=hour)).isoformat().replace(
+            "+00:00", "Z"
+        )
+    captured: dict[str, list[str]] = {}
+    original = Axes.legend
+
+    def spy(self, *args: object, **kwargs: object) -> object:
+        captured["labels"] = list(
+            kwargs.get("labels") or []  # type: ignore[call-overload]
+        )
+        return original(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Axes, "legend", spy)
+    render_shape_chart(rows, title="t", out_png=tmp_path / "shape.png")
+    assert captured["labels"] == ["solidity", "extent"]
+
+
 def test_card_says_not_measured_when_quality_flag_is_blank() -> None:
     """Zero non-blank quality_flag cells must not read as 0.0% clean."""
     rows = _dataset_rows(8)
@@ -312,8 +342,8 @@ def test_alert_table_has_fixed_widths_and_short_window(tmp_path: Path) -> None:
     html_text = _alerts_section([summarize("x", "src", rows, now=NOW)])
     assert 'class="alert-table"' in html_text
     assert "<colgroup>" in html_text
-    assert '<col style="width:11%">' in html_text
-    assert '<col style="width:24%">' in html_text
+    assert '<col style="width:9%">' in html_text
+    assert '<col style="width:34%">' in html_text
     assert "31 Oct 06:00 -> 31 Oct 20:00" in html_text
 
 
@@ -331,6 +361,8 @@ def test_alert_table_css_wraps_dataset_and_nowraps_rule(tmp_path: Path) -> None:
     out = tmp_path / "index.html"
     write_dashboard([Dataset("x", source)], out, now=NOW)
     document = out.read_text(encoding="utf-8")
+    assert "table.alert-table { table-layout: fixed; font-size: 0.85rem; }" in document
+    assert ".alert-table th[scope=col] { font-size: 0.8em; }" in document
     assert ".alert-table td:nth-child(2) { white-space: nowrap; }" not in document
     assert ".alert-table td:nth-child(3) { white-space: nowrap; }" in document
     assert ".alert-table .zone {" in document

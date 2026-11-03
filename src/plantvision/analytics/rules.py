@@ -81,6 +81,27 @@ def parse_timestamp(value: str | None) -> datetime | None:
     return parsed
 
 
+def _fmt_ts(value: datetime | str | None) -> str:
+    """Format a timestamp as ``27 Oct 15:48 UTC``.
+
+    Args:
+        value: A ``datetime`` (naive treated as UTC), an ISO-8601 string, or
+            ``None``.
+
+    Returns:
+        The UTC ``day month hour:minute`` form; an empty string when the value
+        is missing or unparseable.
+    """
+    if value is None:
+        return ""
+    parsed = parse_timestamp(value) if isinstance(value, str) else value
+    if parsed is None:
+        return ""
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).strftime("%d %b %H:%M UTC")
+
+
 def is_true(value: str | None) -> bool:
     """Return whether a CSV boolean cell represents true."""
     if value is None:
@@ -196,7 +217,7 @@ def _zone_findings(
     if dated:
         last = dated[-1][0]
         stale_note = (
-            f" (as of {last.isoformat()})"
+            f" (as of {_fmt_ts(last)})"
             if last_age_days is not None
             and last_age_days * 24 > cfg.growth_window_hours
             else ""
@@ -218,7 +239,7 @@ def _zone_findings(
                         findings.append(_finding(
                             "growth-stall", "warn", zone,
                             f"area_px moved {pct:+.1f}% over the last "
-                            f"{cfg.growth_window_hours:g} h ({len(window)} frames) — "
+                            f"{cfg.growth_window_hours:g} h ({len(window)} frames) · "
                             f"below the {cfg.growth_stall_min_pct:g}% change floor"
                             f"{stale_note}",
                             value=pct, threshold=cfg.growth_stall_min_pct,
@@ -315,8 +336,8 @@ def _zone_findings(
             )
             findings.append(_finding(
                 "capture-gap", severity, zone,
-                f"no frames for {gap_h:.1f} h between {start.isoformat()} and "
-                f"{end.isoformat()}",
+                f"no frames for {gap_h:.1f} h between {_fmt_ts(start)} and "
+                f"{_fmt_ts(end)}",
                 value=gap_h, threshold=threshold,
                 window_start=start.isoformat(), window_end=end.isoformat(),
             ))
@@ -334,8 +355,8 @@ def _zone_findings(
             )
             findings.append(_finding(
                 "stale-data", severity, zone,
-                f"last frame {last.isoformat()} is {age_days:.1f} days old "
-                f"(now {now.isoformat()})",
+                f"last frame {_fmt_ts(last)} is {age_days:.1f} days old "
+                f"(now {_fmt_ts(now)})",
                 value=age_days, threshold=threshold,
             ))
 
@@ -343,7 +364,7 @@ def _zone_findings(
     if dated:
         last = dated[-1][0]
         stale_note = (
-            f" (as of {last.isoformat()})"
+            f" (as of {_fmt_ts(last)})"
             if last_age_days is not None
             and last_age_days * 24 > cfg.quality_window_hours
             else ""
