@@ -183,3 +183,106 @@ are reproducible. Findings sort critical → warn, then `(zone, rule_id)`.
 ```
 
 Expected: `57 passed`. The full suite is `.venv/bin/pytest -q`.
+
+## Interactive shell (v2)
+
+The v2 renderer is a package, not a second copy of the legacy module:
+`plantvision.analytics.dashboard` re-exports the frozen v1 API from
+`dashboard/legacy.py` and adds `build_report`, `load_panels`, `Panel` and
+`ReportResult`. The old CLI (`scripts/build_dashboard.py`) is unchanged.
+
+```sh
+.venv/bin/python scripts/build_report.py \
+  --now 2026-11-03T12:00:00Z \
+  --out output/dashboard/index.html
+```
+
+The command prints exactly one JSON line:
+
+```json
+{"alerts": {"critical": 3, "warn": 6}, "bytes": 457460, "charts": 8,
+ "days": 11, "frames": 12, "json_bytes": 174267, "now_source": "cli",
+ "out": "output/dashboard/index.html", "panels": 3, "rows": 1593,
+ "status": "ok"}
+```
+
+### Flags
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--panels` | `configs/dashboard-panels.yaml` | panel metadata (crop/method/csv live only here) |
+| `--out` | `output/dashboard/index.html` | destination HTML |
+| `--now` | last capture in the data | ISO-8601 reference time for age/gap rules |
+| `--title` | config `title` | page title |
+| `--thumb-width` | `288` | thumbnail width, px |
+| `--thumb-quality` | `58` | initial JPEG quality |
+| `--no-frames` | off | skip embedded thumbnails |
+| `--max-bytes` | `1048576` | hard page budget |
+| `--dump-payload` | none | write the JSON payload (no frames/cards) |
+| `--lang` | `en` | initial language, `en` or `ru` |
+
+Exit codes: `0` ok, `1` data/IO/YAML error, `2` argparse usage, `3` page over
+`--max-bytes` (nothing is written). Output is deterministic for a fixed
+`--now`: two builds produce identical `sha256` bytes.
+
+### Budgets
+
+Page < 1 MiB (hard, exit 3); payload JSON < 400 kB; embedded frames < 300 kB
+(quality ladder 58 -> 45 -> drop). The page contains no `http://`, `https://`,
+`<link>`, `@import` or webfont, so it works from `file://`.
+
+### Language
+
+Every visible string is embedded twice (`data-en` / `data-ru`) with the active
+language as text. The top-bar toggle rewrites `textContent`, updates
+`<html lang>`, persists the choice in `localStorage` (`pv-lang`) and does not
+reload. `--lang` sets the initial language; Russian copy is a real translation
+and numbers/units stay numeric.
+
+### Tabs
+
+`Overview[status,kpi] · Crops · Growth[area-px,area-cm2,rate,daily] · Shape ·
+Data quality · Alerts · Compare · Capture · Method`. Gate 1 populates
+**Overview** and **Growth** (10 cards); the other seven tabs are shell entries
+with an explicit "coming in gate 2" state. The card registry, token system,
+chart primitives, payload contract, drawer, frames and budget gate are complete,
+so gate 2 only adds cards and config.
+
+Deep links use `#/<tab>/<sub>~<chart-id>`, e.g.
+`#/growth/area-cm2~ch-gr-area-cm2` opens the tab, the sub-tab and the drawer in
+one pass. `Esc` closes the drawer and returns focus; the rail is a roving
+`tablist`; every chart is `role="img"` with a title and description.
+
+### Vocabulary (D7/D15)
+
+- **not measured**: the instrument never produced a value (`quality_flag` blank
+  in a store that does not record it).
+- **not recorded**: a provenance fact was never captured (`settings_source`
+  blank, `treatment_id` absent).
+- **not computable**: the value needs at least two measured days
+  (`growth_rate` on a one-day panel).
+
+A measured `0` is still rendered as `0`; only blank/unparseable cells become a
+missing label.
+
+### Regenerate
+
+```sh
+.venv/bin/python scripts/build_series_from_proposals.py   # if masks changed
+.venv/bin/python scripts/build_dashboard.py               # legacy page
+.venv/bin/python scripts/build_report.py --now <ISO>      # v2 page
+```
+
+`data/derived/` is gitignored: rebuild after `update_metrics.py` rather than
+committing generated HTML.
+
+### Rollback (source only)
+
+```sh
+git checkout 2c0393d -- src/plantvision/analytics/dashboard.py docs/DASHBOARD.md
+rm -rf src/plantvision/analytics/dashboard scripts/build_report.py \
+  configs/dashboard-panels.yaml
+rm -f tests/test_dashboard_v2_model.py tests/test_dashboard_v2_charts.py \
+  tests/test_dashboard_v2_html.py tests/test_build_report.py
+.venv/bin/pytest -q
+```

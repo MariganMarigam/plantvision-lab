@@ -1,0 +1,32 @@
+title: PLANT_LAB · growth dashboard
+panels:
+  - id: basil-farm02-sam2
+    label: basil farm-02 · SAM2
+    crop: basil
+    method: sam2
+    method_label: SAM2 mask, marker prompt (sam2.1_hiera_small)
+    pipeline_version: farm02-sam2-v1
+    csv: data/derived/metrics/basil-farm02-sam2.csv
+    frames_dir: data/originals/farm-02
+    masks_dir: data/labels/farm02-v1/masks
+    note: Mask-derived series, not a classical HSV/ExG measurement; review status stays in the label manifest; scale recomputed per frame from the 45 mm ArUco tag.
+  - id: lettuce-farm03-exg
+    label: lettuce farm-03 · ExG
+    crop: lettuce
+    method: exg
+    method_label: ExG threshold (2G-R-B >= -40)
+    pipeline_version: lettuce-exg-0.1
+    csv: data/derived/metrics/lettuce-timeseries.csv
+    frames_dir: data/originals/farm-03
+    masks_dir: ""
+    note: Classical ExG segmentation; quality_flag is not recorded in this store, so defect rate is "not measured".
+  - id: phone01-white
+    label: phone-01 · white light
+    crop: phone capture
+    method: white-light
+    method_label: legacy white-light series (69 rows)
+    pipeline_version: unrecorded
+    csv: data/derived/metrics/timeseries.csv
+    frames_dir: data/originals/phone-01
+    masks_dir: ""
+    note: Legacy white-light series; shape traits are not measured and a documented framing change makes endpoint growth misleading.

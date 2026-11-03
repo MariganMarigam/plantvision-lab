@@ -35,6 +35,8 @@ the data-flow diagram (`docs/architecture.md#data-flow`).
 | Photoperiod | Capture only during the light window (06:00–22:00); dark frames skipped | RGB frames taken in darkness cannot support growth metrics |
 | UI/plotting | Matplotlib notebooks → (Stage 5+) a small dashboard | History first, dashboards later |
 
+The interactive v2 shell is documented in [docs/DASHBOARD.md](docs/DASHBOARD.md).
+
 ## Repo layout
 
 ```
