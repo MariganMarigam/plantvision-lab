@@ -56,6 +56,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="include pending proposals (all) or only accepted (accepted)",
     )
     parser.add_argument(
+        "--quality-mode", choices=("physical", "none"), default="physical",
+        help=(
+            "physical: recompute blur/dark/bright from the sidecar raw metrics; "
+            "none: leave quality_flag blank"
+        ),
+    )
+    parser.add_argument(
         "--biosource", default="basil", help="biosource_id written to every row"
     )
     parser.add_argument(
@@ -112,6 +119,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             originals_root=args.originals,
             labels_root=args.labels,
             review_status=args.review_status,
+            quality_mode=args.quality_mode,
             marker_size_mm=cfg.scale.marker_size_mm,
             aruco_dict=cfg.scale.aruco_dict,
             biosource_id=args.biosource,

@@ -158,3 +158,36 @@ def test_main_output_is_byte_identical_across_runs(tmp_path: Path, capsys) -> No
     assert cli.main(_argv(paths, second)) == 0
     _payload(capsys)
     assert first.read_bytes() == second.read_bytes()
+
+
+def _quality_cell(path: Path) -> str:
+    """Read the single row's ``quality_flag`` cell."""
+    with path.open(newline="", encoding="utf-8") as handle:
+        return next(csv.DictReader(handle))["quality_flag"]
+
+
+def test_main_default_quality_mode_is_physical(tmp_path: Path, capsys) -> None:
+    """The default recomputes physical defects; ``red`` is not copied."""
+    cli = _load_cli()
+    paths = _write_case(tmp_path)
+    out = tmp_path / "out.csv"
+    assert cli.main(_argv(paths, out)) == 0
+    _payload(capsys)
+    assert _quality_cell(out) == "ok"
+
+
+def test_main_quality_mode_none_writes_blank_cell(tmp_path: Path, capsys) -> None:
+    cli = _load_cli()
+    paths = _write_case(tmp_path)
+    out = tmp_path / "out.csv"
+    assert cli.main(_argv(paths, out, "--quality-mode", "none")) == 0
+    _payload(capsys)
+    assert _quality_cell(out) == ""
+
+
+def test_main_bad_quality_mode_exits_2(tmp_path: Path) -> None:
+    cli = _load_cli()
+    paths = _write_case(tmp_path)
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main(_argv(paths, tmp_path / "out.csv", "--quality-mode", "bogus"))
+    assert excinfo.value.code == 2

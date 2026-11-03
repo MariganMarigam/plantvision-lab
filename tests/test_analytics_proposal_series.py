@@ -12,8 +12,10 @@ import numpy as np
 import pytest
 
 from plantvision.analytics.proposal_series import (
+    PHYSICAL_QUALITY_THRESHOLDS,
     Proposal,
     build_rows,
+    physical_quality_flags,
     read_proposals,
 )
 from plantvision.analytics.timeseries import TIMESERIES_COLUMNS
@@ -50,7 +52,16 @@ def _empty_mask() -> np.ndarray:
     return np.zeros((400, 400), dtype=np.uint8)
 
 
-def _sidecar(sha: str, ts: str, *, camera: str = "farm-02", zone: str = "farm/zone-b") -> dict:
+def _sidecar(
+    sha: str,
+    ts: str,
+    *,
+    camera: str = "farm-02",
+    zone: str = "farm/zone-b",
+    brightness: float = 112.0,
+    blur_lapvar: float = 900.0,
+    quality_flags: list[str] | None = None,
+) -> dict:
     """Minimal sidecar matching the capture store shape."""
     return {
         "sha256": sha,
@@ -60,9 +71,10 @@ def _sidecar(sha: str, ts: str, *, camera: str = "farm-02", zone: str = "farm/zo
         "width": 400,
         "height": 400,
         "received_at": ts,
-        "quality_flags": ["red"],
-        "brightness": 112.0,
-        "blur_lapvar": 900.0,
+        # The blurple capture store records ``red`` for this light regime.
+        "quality_flags": ["red"] if quality_flags is None else quality_flags,
+        "brightness": brightness,
+        "blur_lapvar": blur_lapvar,
     }
 
 
@@ -95,6 +107,7 @@ def _write_case(
     mask: np.ndarray | None = None,
     relpath: str = "farm_zone-b/2026-10-24/f.jpg",
     ts: str = _TS,
+    sidecar: dict | None = None,
 ) -> tuple[Path, Path]:
     """Write one originals frame + sidecar and one mask; return both roots."""
     originals = tmp_path / "originals"
@@ -103,8 +116,11 @@ def _write_case(
     frame_path.parent.mkdir(parents=True, exist_ok=True)
     if frame is not None:
         cv2.imwrite(str(frame_path), frame)
-    sidecar = frame_path.with_suffix(".json")
-    sidecar.write_text(json.dumps(_sidecar(sha, ts)), encoding="utf-8")
+    sidecar_path = frame_path.with_suffix(".json")
+    sidecar_path.write_text(
+        json.dumps(sidecar if sidecar is not None else _sidecar(sha, ts)),
+        encoding="utf-8",
+    )
     mask_path = labels / f"masks/{sha}.png"
     mask_path.parent.mkdir(parents=True, exist_ok=True)
     if mask is not None:
@@ -115,11 +131,13 @@ def _write_case(
 def _build(tmp_path: Path, review: dict[str, str], **kwargs):
     """Build one row for the standard fixture."""
     relpath = kwargs.pop("relpath", "farm_zone-b/2026-10-24/f.jpg")
+    sidecar = kwargs.pop("sidecar", None)
     originals, labels = _write_case(
         tmp_path,
         frame=_marker_frame() if kwargs.pop("marker", True) else _plain_frame(),
         mask=_mask(),
         relpath=relpath,
+        sidecar=sidecar,
     )
     proposal = Proposal(
         sha256=_SHA,
@@ -215,9 +233,68 @@ def test_review_status_accepted_excludes_pending(tmp_path: Path) -> None:
     assert result.excluded_review == 1
 
 
-def test_pending_row_carries_label_pending_flag(tmp_path: Path) -> None:
+def test_physical_thresholds_match_the_import_defaults() -> None:
+    assert PHYSICAL_QUALITY_THRESHOLDS == {
+        "blur_lapvar_min": 10.0,
+        "brightness_min": 40.0,
+        "brightness_max": 220.0,
+    }
+
+
+def test_physical_quality_flags_ignores_red_dominance() -> None:
+    """Blurple is red-dominant by design: ``red`` is never a defect."""
+    sidecar = _sidecar(_SHA, _TS)  # quality_flags=["red"], sharp, well lit
+    assert physical_quality_flags(sidecar) == ()
+
+
+@pytest.mark.parametrize(
+    ("brightness", "blur_lapvar", "expected"),
+    [
+        (112.0, 9.99, ("blur",)),
+        (39.9, 900.0, ("dark",)),
+        (220.1, 900.0, ("bright",)),
+        (30.0, 5.0, ("blur", "dark")),
+        (245.0, 5.0, ("blur", "bright")),
+        (40.0, 10.0, ()),
+        (220.0, 10.0, ()),
+    ],
+)
+def test_physical_quality_flags_recomputes_from_raw_metrics(
+    brightness: float, blur_lapvar: float, expected: tuple[str, ...]
+) -> None:
+    sidecar = _sidecar(
+        _SHA, _TS, brightness=brightness, blur_lapvar=blur_lapvar,
+        quality_flags=["red"],
+    )
+    assert physical_quality_flags(sidecar) == expected
+
+
+def test_build_rows_quality_flag_is_physical_only(tmp_path: Path) -> None:
+    """A clean blurple frame records ``ok``: no ``red``, no review token."""
+    result = _build(tmp_path, {_SHA: "1"})
+    assert result.rows[0]["quality_flag"] == "ok"
+
+
+def test_build_rows_quality_flag_records_blur(tmp_path: Path) -> None:
+    result = _build(tmp_path, {_SHA: "1"}, sidecar=_sidecar(_SHA, _TS, blur_lapvar=4.0))
+    assert result.rows[0]["quality_flag"] == "blur"
+
+
+def test_pending_row_does_not_carry_label_pending(tmp_path: Path) -> None:
+    """Review status lives in the manifest, never in the measurement store."""
     result = _build(tmp_path, {_SHA: ""})
-    assert result.rows[0]["quality_flag"].endswith("label_pending")
+    assert "label_pending" not in result.rows[0]["quality_flag"]
+    assert result.rows[0]["quality_flag"] == "ok"
+
+
+def test_build_rows_quality_mode_none_writes_blank(tmp_path: Path) -> None:
+    result = _build(tmp_path, {_SHA: "1"}, quality_mode="none")
+    assert result.rows[0]["quality_flag"] == ""
+
+
+def test_build_rows_rejects_unknown_quality_mode(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="quality_mode"):
+        _build(tmp_path, {_SHA: "1"}, quality_mode="bogus")
 
 
 def test_missing_mask_records_error_and_skips(tmp_path: Path) -> None:

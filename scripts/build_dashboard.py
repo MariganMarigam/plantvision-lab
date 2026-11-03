@@ -21,8 +21,8 @@ _DEFAULT_DATASETS = (
         "basil farm-02 · SAM2",
         Path("data/derived/metrics/basil-farm02-sam2.csv"),
         "SAM2 mask-derived series (sam2.1_hiera_small, marker prompt), not a "
-        "classical HSV/ExG measurement; rows flagged label_pending await human "
-        "review; scale recomputed per frame from the 45 mm ArUco tag.",
+        "classical HSV/ExG measurement; review status stays in the label "
+        "manifest; scale recomputed per frame from the 45 mm ArUco tag.",
     ),
     Dataset("lettuce", Path("data/derived/metrics/lettuce-timeseries.csv")),
 )

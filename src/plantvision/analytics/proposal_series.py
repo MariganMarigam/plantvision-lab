@@ -34,6 +34,77 @@ _ROW_COUNTERS: dict[str, str] = {
     "read": "read_error",
 }
 
+#: Thresholds used when the capture store imported each frame
+#: (``configs/capture-farm-02.yaml`` mirrors them). They are applied to the raw
+#: sidecar metrics so the measurement store never inherits import-time state.
+PHYSICAL_QUALITY_THRESHOLDS: dict[str, float] = {
+    "blur_lapvar_min": 10.0,
+    "brightness_min": 40.0,
+    "brightness_max": 220.0,
+}
+
+#: ``physical`` recomputes blur/dark/bright; ``none`` writes a blank cell.
+QUALITY_MODES: tuple[str, ...] = ("physical", "none")
+
+#: Sentinel written when ``physical`` measured a frame with no defect at all.
+#: The rule engine already treats ``ok`` as "no flags".
+CLEAN_QUALITY_TOKEN = "ok"
+
+
+def physical_quality_flags(sidecar: Mapping[str, object]) -> tuple[str, ...]:
+    """Recompute a frame's physical capture defects from raw sidecar metrics.
+
+    Only defects of the capture itself count. ``red`` is deliberately ignored:
+    the blurple LED regime is red-dominant by design, and review status belongs
+    to the manifest, not to the measurement store.
+
+    Args:
+        sidecar: Parsed sidecar JSON object with ``blur_lapvar`` and
+            ``brightness``; a missing metric is treated as ``0.0``, matching
+            the measurement path.
+
+    Returns:
+        Zero or more of ``("blur", "dark", "bright")`` in that order.
+
+    Raises:
+        ValueError: If a raw metric is not a number.
+    """
+    try:
+        blur = float(sidecar.get("blur_lapvar") or 0.0)  # type: ignore[arg-type]
+        brightness = float(sidecar.get("brightness") or 0.0)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"sidecar raw metric is not numeric: {exc}") from exc
+    flags: list[str] = []
+    if blur < PHYSICAL_QUALITY_THRESHOLDS["blur_lapvar_min"]:
+        flags.append("blur")
+    if brightness < PHYSICAL_QUALITY_THRESHOLDS["brightness_min"]:
+        flags.append("dark")
+    elif brightness > PHYSICAL_QUALITY_THRESHOLDS["brightness_max"]:
+        flags.append("bright")
+    return tuple(flags)
+
+
+def _quality_tokens(
+    sidecar: Mapping[str, object], quality_mode: str
+) -> tuple[str, ...]:
+    """Map a quality mode to the tokens stored in ``quality_flag``.
+
+    Args:
+        sidecar: Parsed sidecar JSON object.
+        quality_mode: ``"physical"`` or ``"none"``.
+
+    Returns:
+        Physical flags plus the clean sentinel, or an empty tuple for ``none``.
+
+    Raises:
+        ValueError: If ``quality_mode`` is not supported.
+    """
+    if quality_mode == "physical":
+        return physical_quality_flags(sidecar) or (CLEAN_QUALITY_TOKEN,)
+    if quality_mode == "none":
+        return ()
+    raise ValueError(f"unknown quality_mode {quality_mode!r}")
+
 
 @dataclass(frozen=True)
 class Proposal:
@@ -168,7 +239,7 @@ def measure_row(
     biosource_id: str,
     experiment_id: str,
     observation_unit_id: str,
-    pending: bool,
+    quality_mode: str = "physical",
 ) -> dict[str, str]:
     """Measure one proposal and return its canonical CSV row.
 
@@ -181,13 +252,17 @@ def measure_row(
         biosource_id: Crop id written to the row.
         experiment_id: Experiment id written to the row.
         observation_unit_id: Observation unit id written to the row.
-        pending: Whether the proposal still awaits human review.
+        quality_mode: ``"physical"`` recomputes blur/dark/bright from the
+            sidecar (writing ``ok`` when clean); ``"none"`` writes a blank
+            ``quality_flag`` cell.
 
     Returns:
         A ``TIMESERIES_COLUMNS``-keyed string row.
 
     Raises:
         SeriesRowError: When the frame/mask/sidecar is missing or unreadable.
+        ValueError: If ``quality_mode`` is not supported or a sidecar metric is
+            not numeric.
     """
     sha = proposal.sha256
     frame = Path(originals_root) / proposal.frame_relpath
@@ -222,9 +297,7 @@ def measure_row(
     if not camera_id:
         raise SeriesRowError("read", f"{sha}: sidecar has no camera_id")
     zone_id = f"{camera_id}/{str(side.get('zone_id') or 'unknown').replace('/', '_')}"
-    flags = tuple(str(flag) for flag in (side.get("quality_flags") or ()))
-    if pending:
-        flags = flags + ("label_pending",)
+    flags = _quality_tokens(side, quality_mode)
 
     measurement = FrameMeasurement(
         stem=sha,
@@ -277,6 +350,7 @@ def build_rows(
     biosource_id: str = "",
     experiment_id: str = "farm02-sam2-v1",
     observation_unit_id: str = "farm-02/farm_zone-b",
+    quality_mode: str = "physical",
 ) -> SeriesBuildResult:
     """Build canonical rows for the selected proposals.
 
@@ -291,16 +365,20 @@ def build_rows(
         biosource_id: Crop id written to every row.
         experiment_id: Experiment id written to every row.
         observation_unit_id: Observation unit id written to every row.
+        quality_mode: ``"physical"`` (recompute blur/dark/bright from the
+            sidecar raw metrics) or ``"none"`` (blank ``quality_flag``).
 
     Returns:
         A :class:`SeriesBuildResult` with rows sorted by
         ``(captured_at, sha256)``.
 
     Raises:
-        ValueError: If ``review_status`` is not supported.
+        ValueError: If ``review_status`` or ``quality_mode`` is not supported.
     """
     if review_status not in {"all", "accepted"}:
         raise ValueError(f"unknown review_status {review_status!r}")
+    if quality_mode not in QUALITY_MODES:
+        raise ValueError(f"unknown quality_mode {quality_mode!r}")
     counters = {
         "excluded_rejected": 0,
         "excluded_review": 0,
@@ -335,7 +413,7 @@ def build_rows(
                 biosource_id=biosource_id,
                 experiment_id=experiment_id,
                 observation_unit_id=observation_unit_id,
-                pending=accepted == "",
+                quality_mode=quality_mode,
             )
         except SeriesRowError as exc:
             counters[_ROW_COUNTERS[exc.kind]] += 1

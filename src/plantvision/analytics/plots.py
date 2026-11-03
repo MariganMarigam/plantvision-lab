@@ -70,10 +70,12 @@ def plot_projected_area(
 ) -> None:
     """Plot projected area (cm2) over capture time with failure-case markers.
 
-    Green series: scaled frames. Red circles: quality-flagged frames. Red
-    crosses at y=0: frames without a detectable marker (F1, unusable for cm2).
-    Capture holes are drawn as breaks, never interpolated. The title is not
-    drawn inside the image; the HTML figcaption is the only title.
+    Green series: scaled frames. Small hollow red circles: quality-flagged
+    frames (defects only — ``ok`` is not a flag). Red crosses at y=0: frames
+    without a detectable marker (F1, unusable for cm2). Capture holes are drawn
+    as breaks, never interpolated. The legend is built once from the actual
+    artists, so split runs do not duplicate labels. The title is not drawn
+    inside the image; the HTML figcaption is the only title.
 
     Args:
         points: One :class:`PlotPoint` per frame.
@@ -107,27 +109,39 @@ def plot_projected_area(
     if facecolor is not None:
         fig.patch.set_facecolor(facecolor)
         ax.set_facecolor(facecolor)
+    handles: list[object] = []
+    labels: list[str] = []
     if scaled:
-        for run in _split_runs(scaled):
+        for index, run in enumerate(_split_runs(scaled)):
             xs = [dt for dt, _p in run]
             ys = [p.projected_area_cm2 for _dt, p in run]
             ax.plot(xs, ys, "-", color="#2e7d32", linewidth=1, zorder=1)
-            ax.scatter(
-                xs, ys, s=40, color="#2e7d32", label="projected area (cm²)",
+            # Split runs must not duplicate the legend label: only the first
+            # run contributes a handle.
+            artist = ax.scatter(
+                xs, ys, s=40, color="#2e7d32",
+                label="projected area (cm²)" if index == 0 else None,
                 zorder=2,
             )
+            if index == 0:
+                handles.append(artist)
+                labels.append("projected area (cm²)")
     flagged = [(dt, p) for dt, p in scaled if p.quality_flags]
     if flagged:
-        ax.scatter(
+        artist = ax.scatter(
             [dt for dt, _p in flagged], [p.projected_area_cm2 for _dt, p in flagged],
-            s=140, facecolors="none", edgecolors="#d32f2f", linewidths=1.5,
+            s=44, facecolors="none", edgecolors="#d32f2f", linewidths=0.8,
             label="quality flag (blur/dark/bright)", zorder=3,
         )
+        handles.append(artist)
+        labels.append("quality flag (blur/dark/bright)")
     if unscaled_x:
-        ax.scatter(
+        artist = ax.scatter(
             unscaled_x, [0.0] * len(unscaled_x), marker="x", s=90, color="#d32f2f",
             label="no scale (unusable for cm²)", zorder=3,
         )
+        handles.append(artist)
+        labels.append("no scale (unusable for cm²)")
     ax.set_xlabel("captured_at (UTC)")
     ax.set_ylabel("projected area (cm²)")
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b %H:%M"))
@@ -140,10 +154,11 @@ def plot_projected_area(
         ax.grid(True, alpha=0.3, color=ink)
     else:
         ax.grid(True, alpha=0.3)
-    legend = ax.legend(loc="best")
-    if ink is not None:
-        for text in legend.get_texts():
-            text.set_color(ink)
+    if handles:
+        legend = ax.legend(handles=handles, labels=labels, loc="best")
+        if ink is not None:
+            for text in legend.get_texts():
+                text.set_color(ink)
     if scaled or unscaled_x:
         fig.autofmt_xdate(rotation=0, ha="center")
     if not scaled and not unscaled:

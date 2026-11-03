@@ -85,12 +85,37 @@ one JSON line:
 
 `--review-status accepted` renders only the human-accepted subset (420 rows,
 416 with scale, 99.05 %, median `area_px` 156839). The default `all` keeps
-accepted + pending rows and tags pending rows with the `label_pending` quality
-token.
+accepted + pending rows; review status lives in the label manifest and is
+**never** written to the timeseries.
+
+### Quality semantics (physical defects only)
+
+`quality_flag` stores physical capture defects, recomputed from the sidecar
+raw metrics with the import-time thresholds
+(`PHYSICAL_QUALITY_THRESHOLDS` in `analytics/proposal_series.py`):
+
+| Sidecar metric | Condition | Token |
+|---|---|---|
+| `blur_lapvar` | `< 10.0` | `blur` |
+| `brightness` | `< 40.0` | `dark` |
+| `brightness` | `> 220.0` | `bright` |
+
+A frame with no defect records `ok` (the rule engine treats `ok` as "no
+flags"); several defects join with `|`. `red` is **not** copied from the
+sidecar: the farm-02 blurple LED regime is red-dominant by design, so red
+dominance describes the light spectrum, not a defect. `red_dominance_min` in
+`configs/capture-farm-02.yaml` applies to white-light captures only.
+
+`--quality-mode` selects the behaviour:
+
+| Value | Effect on `quality_flag` |
+|---|---|
+| `physical` (default) | Recompute blur/dark/bright; `ok` when clean |
+| `none` | Leave the cell blank (no quality claim) |
 
 The dashboard label is `basil farm-02 · SAM2` with the caveat: *SAM2
 mask-derived series (sam2.1_hiera_small, marker prompt), not a classical
-HSV/ExG measurement; rows flagged label_pending await human review; scale
+HSV/ExG measurement; review status stays in the label manifest; scale
 recomputed per frame from the 45 mm ArUco tag.*
 
 Scale provenance: `plantvision.vision.scale.px_per_mm` (`vision/scale.py:73`)
@@ -157,4 +182,4 @@ are reproducible. Findings sort critical → warn, then `(zone, rule_id)`.
 .venv/bin/pytest tests/test_analytics_rules.py tests/test_analytics_dashboard.py tests/test_build_dashboard.py -q
 ```
 
-Expected: `51 passed`. The full suite is `.venv/bin/pytest -q`.
+Expected: `57 passed`. The full suite is `.venv/bin/pytest -q`.

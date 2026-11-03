@@ -382,7 +382,11 @@ def replace_rows(path: str | Path, rows: Sequence[dict[str, str]]) -> int:
 
 
 def points_from_rows(rows: Sequence[dict[str, str]]) -> list[PlotPoint]:
-    """Convert stored rows to plot points (bad floats degrade to unscaled)."""
+    """Convert stored rows to plot points (bad floats degrade to unscaled).
+
+    The ``ok`` token means "measured, no defect" and is dropped; a plotted
+    point carries only real quality flags.
+    """
     points: list[PlotPoint] = []
     for r in rows:
         cap = (r.get("captured_at") or "").strip()
@@ -392,11 +396,18 @@ def points_from_rows(rows: Sequence[dict[str, str]]) -> list[PlotPoint]:
             cmv: float | None = float(cm) if cm else None
         except ValueError:
             cmv = None
+        tokens = (
+            tuple(
+                token for token in (part.strip() for part in qf.split("|"))
+                if token and token.lower() != "ok"
+            )
+            if qf else ()
+        )
         points.append(
             PlotPoint(
                 captured_at=cap or None,
                 projected_area_cm2=cmv,
-                quality_flags=tuple(qf.split("|")) if qf else (),
+                quality_flags=tokens,
             )
         )
     return points

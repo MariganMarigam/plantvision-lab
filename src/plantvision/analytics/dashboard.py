@@ -598,7 +598,18 @@ caption { text-align: left; color: var(--muted); padding-bottom: var(--space-2);
 td, th { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
 th[scope=col] { color: var(--muted); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.04em; }
 table.alert-table { table-layout: fixed; }
-.alert-table td:nth-child(2) { white-space: nowrap; }
+/* Only the rule id is unbreakable; it is one token (e.g. a rule_id). */
+.alert-table td:nth-child(3) { white-space: nowrap; }
+/* Detail prose may contain long comma/ISO tokens: break them, never bleed. */
+.alert-table td:nth-child(4) { overflow-wrap: anywhere; }
+/* Dataset and zone stack on two lines so the cell never runs into Rule. */
+.alert-table .dataset-cell a { display: block; overflow-wrap: anywhere; }
+.alert-table .zone {
+  display: block;
+  font-size: 0.85em;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
 .alert-table td:nth-child(5), .alert-table td:nth-child(6),
 .alert-table th:nth-child(5), .alert-table th:nth-child(6) { text-align: right; }
 table.coverage { font-size: 0.85rem; }
@@ -736,8 +747,9 @@ def _alerts_section(
         rows.append(
             "<tr>"
             f"<td>{_badge(finding.severity)}</td>"
-            f'<td><a href="#dataset-{slug}">'
-            f"{_escape(label)} / {_escape(finding.zone)}</a></td>"
+            f'<td class="dataset-cell"><a href="#dataset-{slug}">'
+            f"{_escape(label)}</a>"
+            f'<span class="zone">{_escape(finding.zone)}</span></td>'
             f"<td>{rule_cell}</td>"
             f"<td>{_escape(finding.detail)}</td>"
             f"<td>{_escape(_fmt_number(finding.value))}</td>"
@@ -750,8 +762,8 @@ def _alerts_section(
         "<h2>Alerts</h2>"
         '<table class="alert-table">'
         '<colgroup>'
-        '<col style="width:8%"><col style="width:16%"><col style="width:14%">'
-        '<col style="width:34%"><col style="width:8%"><col style="width:8%">'
+        '<col style="width:11%"><col style="width:18%"><col style="width:24%">'
+        '<col style="width:18%"><col style="width:7%"><col style="width:10%">'
         '<col style="width:12%">'
         "</colgroup>"
         "<caption>Rule findings (deterministic)</caption>"

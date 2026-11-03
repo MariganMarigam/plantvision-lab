@@ -312,8 +312,40 @@ def test_alert_table_has_fixed_widths_and_short_window(tmp_path: Path) -> None:
     html_text = _alerts_section([summarize("x", "src", rows, now=NOW)])
     assert 'class="alert-table"' in html_text
     assert "<colgroup>" in html_text
-    assert 'style="width:8%"' in html_text
+    assert '<col style="width:11%">' in html_text
+    assert '<col style="width:24%">' in html_text
     assert "31 Oct 06:00 -> 31 Oct 20:00" in html_text
+
+
+def test_alert_dataset_cell_stacks_label_over_zone() -> None:
+    """The dataset cell wraps: label link, then a muted zone line."""
+    html_text = _alerts_section([summarize("basil", "src", _dataset_rows(8), now=NOW)])
+    assert '<a href="#dataset-basil">basil</a>' in html_text
+    assert '<span class="zone">z</span></td>' in html_text
+
+
+def test_alert_table_css_wraps_dataset_and_nowraps_rule(tmp_path: Path) -> None:
+    """Only the rule column is nowrap; the dataset cell may wrap."""
+    source = tmp_path / "data.csv"
+    _write_csv(source, _dataset_rows(8))
+    out = tmp_path / "index.html"
+    write_dashboard([Dataset("x", source)], out, now=NOW)
+    document = out.read_text(encoding="utf-8")
+    assert ".alert-table td:nth-child(2) { white-space: nowrap; }" not in document
+    assert ".alert-table td:nth-child(3) { white-space: nowrap; }" in document
+    assert ".alert-table .zone {" in document
+    assert "font-size: 0.85em;" in document
+
+
+def test_quality_flag_ok_token_is_not_a_plot_flag() -> None:
+    """``ok`` marks a measured frame; it must never draw a quality marker."""
+    from plantvision.analytics.timeseries import points_from_rows
+
+    row = {column: "" for column in TIMESERIES_COLUMNS}
+    row.update({"captured_at": "2026-10-31T00:00:00Z", "area_cm2": "12.5",
+                "quality_flag": "ok"})
+    point = points_from_rows([row])[0]
+    assert point.quality_flags == ()
 
 
 def test_alerts_link_to_existing_dataset_and_chart_ids(tmp_path: Path) -> None:
@@ -331,7 +363,8 @@ def test_alerts_link_to_existing_dataset_and_chart_ids(tmp_path: Path) -> None:
     document = out.read_text(encoding="utf-8")
     assert 'id="chart-x-px"' in document
     assert 'id="chart-x-cm2"' in document
-    assert '<a href="#dataset-x">x / z</a>' in document
+    assert '<a href="#dataset-x">x</a>' in document
+    assert '<span class="zone">z</span>' in document
     assert 'href="#chart-x-cm2">scale-coverage</a>' in document
     assert 'href="#chart-x-px">capture-gap</a>' in document
 
@@ -359,3 +392,68 @@ def test_default_html_title_has_no_em_dash(tmp_path: Path) -> None:
     title = document.split("<title>", 1)[1].split("</title>", 1)[0]
     assert "—" not in title
     assert " · " in title
+
+
+def _spy_legend(monkeypatch: pytest.MonkeyPatch) -> dict:
+    """Capture the handles/labels handed to ``Axes.legend``."""
+    import matplotlib.axes
+
+    captured: dict = {}
+    original = matplotlib.axes.Axes.legend
+
+    def spy(self, *args, **kwargs):
+        captured["handles"] = list(kwargs.get("handles") or ())
+        captured["labels"] = list(kwargs.get("labels") or ())
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "legend", spy)
+    return captured
+
+
+def _cm2_points(flagged: tuple[int, ...] = ()) -> list[PlotPoint]:
+    """Four runs (a real capture hole between each) plus optional flags."""
+    base = datetime(2026, 10, 30, 0, 0, tzinfo=timezone.utc)
+    points: list[PlotPoint] = []
+    for run in range(4):
+        for offset in (0, 1):
+            hour = run * 18 + offset
+            stamp = (base + timedelta(hours=hour)).isoformat()
+            flags = ("blur",) if hour in flagged else ()
+            points.append(PlotPoint(stamp, 10.0 + hour, flags))
+    return points
+
+
+def test_cm2_legend_labels_each_series_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Four runs must not duplicate the series label four times."""
+    captured = _spy_legend(monkeypatch)
+    plot_projected_area(_cm2_points((1,)), "z", "v", tmp_path / "cm2.png")
+    assert captured["labels"] == [
+        "projected area (cm²)", "quality flag (blur/dark/bright)"
+    ]
+
+
+def test_cm2_legend_omits_quality_entry_without_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured = _spy_legend(monkeypatch)
+    plot_projected_area(_cm2_points(), "z", "v", tmp_path / "cm2.png")
+    assert captured["labels"] == ["projected area (cm²)"]
+
+
+def test_cm2_quality_markers_are_small_hollow_circles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Quality circles annotate outliers; they must not dominate the plot."""
+    import matplotlib.colors
+
+    captured = _spy_legend(monkeypatch)
+    plot_projected_area(_cm2_points((1,)), "z", "v", tmp_path / "cm2.png")
+    quality = captured["handles"][1]
+    assert quality.get_sizes()[0] <= 60
+    assert quality.get_linewidths()[0] <= 1.0
+    # Hollow: no fill colour is set at all.
+    assert quality.get_facecolors().size == 0
+    edge = matplotlib.colors.to_rgba(quality.get_edgecolors()[0])
+    assert edge[0] > 0.5 and edge[1] < 0.4  # red edge
