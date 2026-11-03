@@ -6,16 +6,21 @@ import csv
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import cv2
 import pytest
 
 from plantvision.analytics.dashboard import (
     Dataset,
+    _alerts_section,
+    _overview_card,
+    _split_runs,
     load_rows,
     render_charts,
     render_series_chart,
     summarize,
     write_dashboard,
 )
+from plantvision.analytics.plots import PlotPoint, plot_projected_area
 from plantvision.analytics.timeseries import TIMESERIES_COLUMNS
 
 NOW = datetime(2026, 11, 1, 12, 0, tzinfo=timezone.utc)
@@ -190,3 +195,167 @@ def test_duplicate_dataset_labels_raise(tmp_path: Path) -> None:
             tmp_path / "index.html",
             now=NOW,
         )
+
+
+def test_dataset_note_rendered_in_section(tmp_path: Path) -> None:
+    """A dataset note appears under Source and the label gets its slug anchor."""
+    source = tmp_path / "data.csv"
+    _write_csv(source, _dataset_rows(4))
+    out = tmp_path / "index.html"
+    write_dashboard(
+        [Dataset("basil farm-02 · SAM2", source, "SAM2 mask series")],
+        out,
+        now=NOW,
+    )
+    document = out.read_text(encoding="utf-8")
+    assert "basil farm-02 · SAM2" in document
+    assert "SAM2 mask series" in document
+    assert 'id="dataset-basil-farm-02-sam2"' in document
+    assert '<p class="muted">SAM2 mask series</p>' in document
+
+
+def test_dataset_note_absent_when_empty(tmp_path: Path) -> None:
+    """No note means no empty muted paragraph; Source is still rendered."""
+    source = tmp_path / "data.csv"
+    _write_csv(source, _dataset_rows(4))
+    out = tmp_path / "index.html"
+    write_dashboard([Dataset("x", source)], out, now=NOW)
+    document = out.read_text(encoding="utf-8")
+    assert "Source:" in document
+    assert 'class="muted"></p>' not in document
+
+
+def test_series_runs_split_on_capture_gap() -> None:
+    """A hole larger than 3x the median gap becomes a separate run."""
+    base = datetime(2026, 10, 30, 0, 0, tzinfo=timezone.utc)
+    points = [
+        (base + timedelta(hours=offset), float(offset))
+        for offset in (0, 1, 2, 18, 19)
+    ]
+    runs = _split_runs(points)
+    assert [len(run) for run in runs] == [3, 2]
+    assert runs[1][0][0] == base + timedelta(hours=18)
+
+
+def test_plots_split_runs_on_capture_gap() -> None:
+    """The cm2 renderer uses the same gap rule."""
+    from plantvision.analytics.plots import _split_runs as plot_runs
+
+    base = datetime(2026, 10, 30, 0, 0, tzinfo=timezone.utc)
+    points = [
+        (base + timedelta(hours=offset),
+         PlotPoint((base + timedelta(hours=offset)).isoformat(), 10.0, ()))
+        for offset in (0, 1, 2, 18, 19)
+    ]
+    assert [len(run) for run in plot_runs(points)] == [3, 2]
+
+
+def test_card_says_not_measured_when_quality_flag_is_blank() -> None:
+    """Zero non-blank quality_flag cells must not read as 0.0% clean."""
+    rows = _dataset_rows(8)
+    for row in rows:
+        row["quality_flag"] = ""
+    card = _overview_card(summarize("x", "src", rows, now=NOW))
+    assert "not measured" in card
+    assert "Quality-flag rate</dt><dd>0.0%" not in card
+
+
+def test_card_has_verdict_age_and_area_delta() -> None:
+    """The card answers the crop: verdict + age, then first->last area."""
+    rows = _dataset_rows(8)
+    card = _overview_card(summarize("x", "src", rows, now=NOW))
+    assert "WARN" in card
+    assert "1.2 days" in card
+    assert "+0.7%" in card
+    assert "Zones" not in card
+    assert "Duplicates" not in card
+    assert "Scale coverage (all frames)" in card
+
+
+def test_plot_facecolor_and_ink_change_output(tmp_path: Path) -> None:
+    """Omitted kwargs stay light; explicit kwargs paint the dark page."""
+    points = [
+        PlotPoint("2026-10-31T00:00:00Z", 10.0, ()),
+        PlotPoint("2026-10-31T01:00:00Z", 12.0, ()),
+    ]
+    light = tmp_path / "light.png"
+    dark = tmp_path / "dark.png"
+    plot_projected_area(points, "z", "v", light)
+    plot_projected_area(
+        points, "z", "v", dark, facecolor="#171b18", ink="#a8b3ab"
+    )
+    light_px = cv2.imread(str(light))[0, 0]
+    dark_px = cv2.imread(str(dark))[0, 0]
+    assert all(channel > 200 for channel in light_px)
+    assert all(channel < 60 for channel in dark_px)
+
+
+def test_chart_png_uses_dashboard_size_and_no_em_dash_titles(tmp_path: Path) -> None:
+    """Charts are 9x3.2 in at 180 dpi and titles use the middle dot."""
+    png = tmp_path / "chart.png"
+    render_series_chart(
+        _dataset_rows(8), "area_px", title="t", ylabel="area (px)",
+        color="#4caf50", out_png=png,
+    )
+    assert cv2.imread(str(png)).shape[:2] == (576, 1620)
+    charts = render_charts(_dataset_rows(8), tmp_path, label="x", pipeline_version="v")
+    assert all("—" not in chart.title for chart in charts)
+    assert all(" · " in chart.title for chart in charts)
+
+
+def test_alert_table_has_fixed_widths_and_short_window(tmp_path: Path) -> None:
+    """The alert table is dense: colgroup + formatted window."""
+    rows = _dataset_rows(8)
+    rows[7]["captured_at"] = (datetime(
+        2026, 10, 31, 20, 0, tzinfo=timezone.utc
+    )).isoformat().replace("+00:00", "Z")
+    html_text = _alerts_section([summarize("x", "src", rows, now=NOW)])
+    assert 'class="alert-table"' in html_text
+    assert "<colgroup>" in html_text
+    assert 'style="width:8%"' in html_text
+    assert "31 Oct 06:00 -> 31 Oct 20:00" in html_text
+
+
+def test_alerts_link_to_existing_dataset_and_chart_ids(tmp_path: Path) -> None:
+    """Alert rows link to the dataset section and the relevant chart figure."""
+    source = tmp_path / "data.csv"
+    rows = _dataset_rows(10)
+    for row in rows[5:]:
+        row["scale_ok"] = "false"
+    rows[9]["captured_at"] = (datetime(
+        2026, 11, 1, 1, 0, tzinfo=timezone.utc
+    )).isoformat().replace("+00:00", "Z")
+    _write_csv(source, rows)
+    out = tmp_path / "index.html"
+    write_dashboard([Dataset("x", source)], out, now=NOW)
+    document = out.read_text(encoding="utf-8")
+    assert 'id="chart-x-px"' in document
+    assert 'id="chart-x-cm2"' in document
+    assert '<a href="#dataset-x">x / z</a>' in document
+    assert 'href="#chart-x-cm2">scale-coverage</a>' in document
+    assert 'href="#chart-x-px">capture-gap</a>' in document
+
+
+def test_coverage_table_sits_below_charts(tmp_path: Path) -> None:
+    """The dense per-column table follows its charts."""
+    source = tmp_path / "data.csv"
+    _write_csv(source, _dataset_rows(8))
+    out = tmp_path / "index.html"
+    write_dashboard([Dataset("x", source)], out, now=NOW)
+    document = out.read_text(encoding="utf-8")
+    assert '<table class="coverage">' in document
+    assert document.index('<div class="charts">') < document.index(
+        '<table class="coverage">'
+    )
+
+
+def test_default_html_title_has_no_em_dash(tmp_path: Path) -> None:
+    """The page title uses the middle dot, not an em dash."""
+    source = tmp_path / "data.csv"
+    _write_csv(source, _dataset_rows(4))
+    out = tmp_path / "index.html"
+    write_dashboard([Dataset("x", source)], out, now=NOW)
+    document = out.read_text(encoding="utf-8")
+    title = document.split("<title>", 1)[1].split("</title>", 1)[0]
+    assert "—" not in title
+    assert " · " in title

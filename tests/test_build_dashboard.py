@@ -126,3 +126,23 @@ def test_cli_now_flag_is_used_in_header(tmp_path: Path, capsys) -> None:
     assert code == 0
     _payload(capsys)
     assert "2026-11-02T12:00:00" in out.read_text(encoding="utf-8")
+
+
+def test_default_datasets_use_sam2_basil() -> None:
+    """The default basil dataset is the SAM2 bridge, not the white-light store."""
+    cli = _load_cli()
+    datasets = cli.parse_args([]).dataset
+    assert datasets[0].label == "basil farm-02 · SAM2"
+    assert datasets[0].csv_path == Path(
+        "data/derived/metrics/basil-farm02-sam2.csv"
+    )
+    assert "not a classical" in datasets[0].note
+    assert datasets[1].label == "lettuce"
+
+
+def test_docs_describe_sam2_default() -> None:
+    """The dashboard docs document the SAM2 bridge and its review flag."""
+    text = (_ROOT / "docs" / "DASHBOARD.md").read_text(encoding="utf-8")
+    assert "basil-farm02-sam2.csv" in text
+    assert "--review-status accepted" in text
+    assert "deferred to milestone A2" not in text

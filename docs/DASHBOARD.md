@@ -22,16 +22,16 @@ Defaults:
 
 | Option | Default |
 |---|---|
-| `--dataset` | `basil=data/derived/metrics/timeseries.csv` and `lettuce=data/derived/metrics/lettuce-timeseries.csv` |
+| `--dataset` | `basil farm-02 · SAM2=data/derived/metrics/basil-farm02-sam2.csv` and `lettuce=data/derived/metrics/lettuce-timeseries.csv` |
 | `--out` | `output/dashboard/index.html` |
 | `--pipeline-version` | `unrecorded` |
-| `--title` | `PlantVision — growth dashboard` |
+| `--title` | `PlantVision · growth dashboard` |
 | `--now` | current UTC time |
 
 The command prints exactly one JSON line, for example:
 
 ```json
-{"status": "ok", "out": "output/dashboard/index.html", "datasets": 2, "rows": 912, "alerts": {"critical": 3, "warn": 4}, "charts": 7}
+{"status": "ok", "out": "output/dashboard/index.html", "datasets": 2, "rows": 1524, "alerts": {"critical": 2, "warn": 4}, "charts": 8}
 ```
 
 ## View
@@ -56,14 +56,56 @@ viewing because every asset is embedded.
 ## Datasets
 
 Datasets are passed as `LABEL=PATH`; repeat `--dataset` to render more than
-one. Default labels and paths are `basil` →
-`data/derived/metrics/timeseries.csv` and `lettuce` →
-`data/derived/metrics/lettuce-timeseries.csv`.
+one. The default basil dataset is `basil farm-02 · SAM2` →
+`data/derived/metrics/basil-farm02-sam2.csv` (the mask-derived SAM2 bridge)
+and lettuce is → `data/derived/metrics/lettuce-timeseries.csv`. The 69-row
+`data/derived/metrics/timeseries.csv` is a legacy white-light series and is
+only rendered when passed explicitly.
 
 The CSV header must equal `plantvision.analytics.timeseries.TIMESERIES_COLUMNS`
 or be a strict prefix of it (legacy stores with fewer trailing columns are
 accepted). Any other header aborts the build with a `ValueError` naming both
 headers.
+
+## Basil farm-02 SAM2 series (A2 bridge)
+
+The default basil dataset is rebuilt deterministically from the SAM2 proposal
+export; no model inference happens here and the node imports no `torch`.
+
+```sh
+.venv/bin/python scripts/build_series_from_proposals.py
+```
+
+It rewrites `data/derived/metrics/basil-farm02-sam2.csv` atomically and prints
+one JSON line:
+
+```json
+{"status": "ok", "out": "data/derived/metrics/basil-farm02-sam2.csv", "proposals": 697, "rows": 681, "excluded_rejected": 16, "excluded_review": 0, "missing_review": 0, "missing_frame": 0, "missing_mask": 0, "missing_sidecar": 0, "read_error": 0, "scale_rows": 677, "scale_pct": 99.41, "trait_rows": 681, "errors": 0, "first_at": "2026-10-24T05:48:26.000000Z", "last_at": "2026-10-27T15:48:29.000000Z", "median_area_px": 148429.0, "median_area_cm2": 91.842}
+```
+
+`--review-status accepted` renders only the human-accepted subset (420 rows,
+416 with scale, 99.05 %, median `area_px` 156839). The default `all` keeps
+accepted + pending rows and tags pending rows with the `label_pending` quality
+token.
+
+The dashboard label is `basil farm-02 · SAM2` with the caveat: *SAM2
+mask-derived series (sam2.1_hiera_small, marker prompt), not a classical
+HSV/ExG measurement; rows flagged label_pending await human review; scale
+recomputed per frame from the 45 mm ArUco tag.*
+
+Scale provenance: `plantvision.vision.scale.px_per_mm` (`vision/scale.py:73`)
+detects the printed `DICT_5X5_50`, 45 mm marker in every frame; `px_per_mm`
+and everything derived from it are recomputed per frame, never carried over.
+Rows without a detectable marker keep blank `px_per_mm`/`area_cm2` and
+`scale_ok=false`.
+
+The 69-row `timeseries.csv` is the legacy white-light `phone-01` series. It is
+not a default and is rendered explicitly with:
+
+```sh
+.venv/bin/python scripts/build_dashboard.py \
+  --dataset "basil white-light (phone-01)=data/derived/metrics/timeseries.csv"
+```
 
 ## Rules
 
@@ -97,15 +139,11 @@ are reproducible. Findings sort critical → warn, then `(zone, rule_id)`.
   P2 produces blurple masks; they are `RuleConfig` fields, not CLI flags.
 - The store has no `pipeline_version` or `crop_id` column, so the dashboard
   cannot separate pipeline generations or crops beyond the dataset label.
-- The existing 69-row basil store is the **white-light `phone-01` series**
-  (2026-10-16/17, zone `shelf-a/tray-1`), not the farm-02 blurple run. The
-  dashboard labels it as that white-light series and does not present it as
-  farm-02 basil.
-- farm-02 basil (697 frames, blurple) has **no classical series**. A classic
-  HSV/ExG mask covers ~1% of the frame versus ~22% plant area from SAM2, so a
-  rebuilt classical series would be false data. Basil metrics come from SAM2
-  proposals and the P2 student; bridging that into the timeseries is deferred
-  to milestone A2.
+- The farm-02 basil series is the **SAM2 bridge**: mask-derived, not a
+  classical HSV/ExG measurement. It exposes `settings_source`,
+  `light_regime` and `treatment_id` as blank by design (the capture rig does
+  not record them), so the provenance warning reads "not recorded", not
+  "pipeline broke".
 - A framing change in the phone-01 series makes endpoint growth misleading;
   treat the area trend as indicative, not a growth rate.
 - Multi-zone datasets render one overlaid chart per metric; per-zone facets are
@@ -119,4 +157,4 @@ are reproducible. Findings sort critical → warn, then `(zone, rule_id)`.
 .venv/bin/pytest tests/test_analytics_rules.py tests/test_analytics_dashboard.py tests/test_build_dashboard.py -q
 ```
 
-Expected: `36 passed`. The full suite is `.venv/bin/pytest -q`.
+Expected: `51 passed`. The full suite is `.venv/bin/pytest -q`.

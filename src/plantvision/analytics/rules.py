@@ -188,10 +188,19 @@ def _zone_findings(
     """Evaluate every rule for one zone."""
     findings: list[Finding] = []
     dated = _dated(zone_rows)
+    last_age_days: float | None = None
+    if dated:
+        last_age_days = max(0.0, (now - dated[-1][0]).total_seconds() / 86400)
 
     # 6. growth-stall
     if dated:
         last = dated[-1][0]
+        stale_note = (
+            f" (as of {last.isoformat()})"
+            if last_age_days is not None
+            and last_age_days * 24 > cfg.growth_window_hours
+            else ""
+        )
         window = [
             row for ts, row in dated
             if ts >= last - timedelta(hours=cfg.growth_window_hours)
@@ -210,7 +219,8 @@ def _zone_findings(
                             "growth-stall", "warn", zone,
                             f"area_px moved {pct:+.1f}% over the last "
                             f"{cfg.growth_window_hours:g} h ({len(window)} frames) — "
-                            f"below the {cfg.growth_stall_min_pct:g}% change floor",
+                            f"below the {cfg.growth_stall_min_pct:g}% change floor"
+                            f"{stale_note}",
                             value=pct, threshold=cfg.growth_stall_min_pct,
                         ))
 
@@ -332,6 +342,12 @@ def _zone_findings(
     # 11. quality-flag-rate
     if dated:
         last = dated[-1][0]
+        stale_note = (
+            f" (as of {last.isoformat()})"
+            if last_age_days is not None
+            and last_age_days * 24 > cfg.quality_window_hours
+            else ""
+        )
         window = [
             (ts, row) for ts, row in dated
             if ts >= last - timedelta(hours=cfg.quality_window_hours)
@@ -345,14 +361,16 @@ def _zone_findings(
                 findings.append(_finding(
                     "quality-flag-rate", "critical", zone,
                     f"{flagged} of {len(window)} frames in the last "
-                    f"{cfg.quality_window_hours:g} h carry quality flags",
+                    f"{cfg.quality_window_hours:g} h carry quality flags"
+                    f"{stale_note}",
                     value=rate, threshold=cfg.quality_critical_pct,
                 ))
             elif rate >= cfg.quality_warn_pct:
                 findings.append(_finding(
                     "quality-flag-rate", "warn", zone,
                     f"{flagged} of {len(window)} frames in the last "
-                    f"{cfg.quality_window_hours:g} h carry quality flags",
+                    f"{cfg.quality_window_hours:g} h carry quality flags"
+                    f"{stale_note}",
                     value=rate, threshold=cfg.quality_warn_pct,
                 ))
 

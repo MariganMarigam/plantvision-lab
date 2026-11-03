@@ -12,6 +12,7 @@ import csv
 import html
 import math
 import re
+import statistics
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -42,15 +43,17 @@ class Dataset:
 
     label: str
     csv_path: Path
+    note: str = ""  # optional caveat paragraph shown under Source
 
 
 @dataclass(frozen=True)
 class Chart:
-    """One rendered chart: title, alt text and the PNG on disk."""
+    """One rendered chart: title, alt text, PNG and optional anchor id."""
 
     title: str
     alt: str
     png_path: Path
+    chart_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -72,6 +75,9 @@ class DatasetSummary:
     duplicates: int
     coverage: tuple[tuple[str, int], ...]
     findings: tuple[Finding, ...]
+    note: str = ""
+    area_first: float | None = None
+    area_last: float | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +100,11 @@ _COVERAGE_COLUMNS: tuple[str, ...] = (
 def _escape(value: object) -> str:
     """HTML-escape any dynamic value (quotes included)."""
     return html.escape(str(value), quote=True)
+
+
+def _note_html(note: str) -> str:
+    """Render a dataset caveat paragraph (empty string when there is none)."""
+    return f'<p class="muted">{_escape(note)}</p>' if note else ""
 
 
 def _slug(label: str) -> str:
@@ -123,6 +134,42 @@ def _finite(row: dict[str, str], key: str) -> float | None:
 def _has_numeric(rows: Sequence[dict[str, str]], key: str) -> bool:
     """Whether any row carries a finite numeric value in ``key``."""
     return any(_finite(row, key) is not None for row in rows)
+
+
+def _split_runs(
+    points: Sequence[tuple[datetime, float]],
+    *,
+    min_gap_hours: float = 2.0,
+) -> list[list[tuple[datetime, float]]]:
+    """Split a chronological series where a hole is a real capture gap.
+
+    A break is inserted when ``dt - prev_dt`` exceeds
+    ``max(3 * median_gap, min_gap_hours h)``. Without this, a multi-hour hole
+    is drawn as a smooth line between two unrelated observations.
+
+    Args:
+        points: Chronologically sorted ``(timestamp, value)`` pairs.
+        min_gap_hours: Floor for the break threshold in hours.
+
+    Returns:
+        One list per continuous run; an empty input yields an empty list.
+    """
+    if not points:
+        return []
+    if len(points) < 2:
+        return [list(points)]
+    gaps = [
+        (current[0] - previous[0]).total_seconds()
+        for previous, current in zip(points, points[1:])
+    ]
+    threshold = max(3.0 * statistics.median(gaps), min_gap_hours * 3600.0)
+    runs: list[list[tuple[datetime, float]]] = [[points[0]]]
+    for previous, current in zip(points, points[1:]):
+        if (current[0] - previous[0]).total_seconds() > threshold:
+            runs.append([current])
+        else:
+            runs[-1].append(current)
+    return runs
 
 
 def load_rows(path: Path) -> list[dict[str, str]]:
@@ -162,6 +209,7 @@ def summarize(
     *,
     now: datetime,
     config: RuleConfig | None = None,
+    note: str = "",
 ) -> DatasetSummary:
     """Compute per-dataset statistics and evaluate the rules.
 
@@ -171,6 +219,7 @@ def summarize(
         rows: Parsed CSV rows.
         now: Reference time for age rules (naive treated as UTC).
         config: Optional rule thresholds.
+        note: Caveat paragraph rendered under the source line.
 
     Returns:
         The filled :class:`DatasetSummary`.
@@ -211,6 +260,10 @@ def summarize(
         for column in _COVERAGE_COLUMNS
     )
     findings = tuple(evaluate_rules(rows, now=now, config=config))
+    area_values = [
+        value for _timestamp, row in dated
+        if (value := _finite(row, "area_px")) is not None
+    ]
 
     return DatasetSummary(
         label=label,
@@ -228,11 +281,14 @@ def summarize(
         duplicates=duplicates,
         coverage=coverage,
         findings=findings,
+        note=note,
+        area_first=area_values[0] if area_values else None,
+        area_last=area_values[-1] if area_values else None,
     )
 
 
-def _style_axes(ax: object, *, title: str, ylabel: str, fig: object) -> None:
-    """Apply the shared dark theme to one matplotlib axis."""
+def _style_axes(ax: object, *, ylabel: str, fig: object) -> None:
+    """Apply the shared dark theme to one matplotlib axis (no in-image title)."""
     fig.patch.set_facecolor("#171b18")  # type: ignore[attr-defined]
     ax.set_facecolor("#171b18")  # type: ignore[attr-defined]
     ax.grid(True, color="#2a332c")  # type: ignore[attr-defined]
@@ -241,10 +297,16 @@ def _style_axes(ax: object, *, title: str, ylabel: str, fig: object) -> None:
     ax.tick_params(colors="#a8b3ab")  # type: ignore[attr-defined]
     ax.xaxis.label.set_color("#a8b3ab")  # type: ignore[attr-defined]
     ax.yaxis.label.set_color("#a8b3ab")  # type: ignore[attr-defined]
-    ax.title.set_color("#e8ede9")  # type: ignore[attr-defined]
     ax.set_xlabel("captured_at (UTC)")  # type: ignore[attr-defined]
     ax.set_ylabel(ylabel)  # type: ignore[attr-defined]
-    ax.set_title(title, loc="left")  # type: ignore[attr-defined]
+
+
+def _format_time_axis(ax: object, fig: object) -> None:
+    """Apply the shared date tick format and zero-rotation layout."""
+    import matplotlib.dates as mdates
+
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b %H:%M"))  # type: ignore[attr-defined]
+    fig.autofmt_xdate(rotation=0, ha="center")  # type: ignore[attr-defined]
 
 
 def render_series_chart(
@@ -258,10 +320,13 @@ def render_series_chart(
 ) -> None:
     """Render one metric over time as a dark-theme PNG.
 
+    The title is not drawn inside the image: the HTML figcaption is the only
+    title. Capture holes are drawn as breaks, never as interpolated lines.
+
     Args:
         rows: Parsed CSV rows.
         metric: Numeric column to plot.
-        title: Chart title.
+        title: Chart title (metadata only; not rendered in the PNG).
         ylabel: Y-axis label.
         color: Series colour.
         out_png: Destination PNG path.
@@ -287,16 +352,17 @@ def render_series_chart(
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    _style_axes(ax, title=title, ylabel=ylabel, fig=fig)
-    xs = [point[0] for point in points]
-    ys = [point[1] for point in points]
-    ax.plot(xs, ys, color=color, linewidth=1.4)
-    ax.scatter(xs, ys, s=12, color=color)
-    fig.autofmt_xdate()
+    fig, ax = plt.subplots(figsize=(9, 3.2))
+    _style_axes(ax, ylabel=ylabel, fig=fig)
+    for run in _split_runs(points):
+        xs = [point[0] for point in run]
+        ys = [point[1] for point in run]
+        ax.plot(xs, ys, color=color, linewidth=1.4)
+        ax.scatter(xs, ys, s=12, color=color)
+    _format_time_axis(ax, fig)
     fig.tight_layout()
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_png, dpi=130, facecolor=fig.get_facecolor())
+    fig.savefig(out_png, dpi=180, facecolor=fig.get_facecolor())
     plt.close(fig)
 
 
@@ -307,7 +373,7 @@ def render_shape_chart(
 
     Args:
         rows: Parsed CSV rows.
-        title: Chart title.
+        title: Chart title (metadata only; not rendered in the PNG).
         out_png: Destination PNG path.
 
     Raises:
@@ -332,29 +398,30 @@ def render_shape_chart(
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    _style_axes(ax, title=title, ylabel="ratio (0–1)", fig=fig)
+    fig, ax = plt.subplots(figsize=(9, 3.2))
+    _style_axes(ax, ylabel="ratio (0-1)", fig=fig)
     colors = {"solidity": "#e0a800", "extent": "#ab47bc"}
     for metric, points in series.items():
         if not points:
             continue
-        ax.plot(
-            [point[0] for point in points],
-            [point[1] for point in points],
-            color=colors[metric], linewidth=1.4, label=metric,
-        )
-        ax.scatter(
-            [point[0] for point in points],
-            [point[1] for point in points],
-            s=12, color=colors[metric],
-        )
+        for run in _split_runs(points):
+            ax.plot(
+                [point[0] for point in run],
+                [point[1] for point in run],
+                color=colors[metric], linewidth=1.4, label=metric,
+            )
+            ax.scatter(
+                [point[0] for point in run],
+                [point[1] for point in run],
+                s=12, color=colors[metric],
+            )
     legend = ax.legend()
     for text in legend.get_texts():
         text.set_color("#e8ede9")
-    fig.autofmt_xdate()
+    _format_time_axis(ax, fig)
     fig.tight_layout()
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_png, dpi=130, facecolor=fig.get_facecolor())
+    fig.savefig(out_png, dpi=180, facecolor=fig.get_facecolor())
     plt.close(fig)
 
 
@@ -378,10 +445,11 @@ def render_charts(
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     charts: list[Chart] = []
+    slug = _slug(label)
 
     if _has_numeric(rows, "area_px"):
         png = out_dir / "area-px.png"
-        title = f"{label} — projected area (px)"
+        title = f"{label} · projected area (px)"
         render_series_chart(
             rows, "area_px", title=title, ylabel="area (px)",
             color="#4caf50", out_png=png,
@@ -390,6 +458,7 @@ def render_charts(
             title=title,
             alt=f"{label}: projected plant area in pixels over capture time",
             png_path=png,
+            chart_id=f"chart-{slug}-px",
         ))
 
     if any(_cell(row, "area_cm2") for row in rows):
@@ -397,20 +466,22 @@ def render_charts(
         zones = {_cell(row, "zone_id") for row in rows if _cell(row, "zone_id")}
         zone_label = ", ".join(sorted(zones)) or label
         plot_projected_area(
-            points_from_rows(rows), zone_label, pipeline_version, png
+            points_from_rows(rows), zone_label, pipeline_version, png,
+            facecolor="#171b18", ink="#a8b3ab",
         )
         charts.append(Chart(
-            title=f"{label} — projected area (cm²)",
+            title=f"{label} · projected area (cm²)",
             alt=(
                 "projected area in cm²; red × marks frames without a detected "
                 "scale marker"
             ),
             png_path=png,
+            chart_id=f"chart-{slug}-cm2",
         ))
 
     if _has_numeric(rows, "roi_fraction_pct"):
         png = out_dir / "roi.png"
-        title = f"{label} — plant share of ROI (%)"
+        title = f"{label} · plant share of ROI (%)"
         render_series_chart(
             rows, "roi_fraction_pct", title=title,
             ylabel="plant share of ROI (%)", color="#5b9bd5", out_png=png,
@@ -419,16 +490,18 @@ def render_charts(
             title=title,
             alt=f"{label}: plant share of the region of interest over capture time",
             png_path=png,
+            chart_id=f"chart-{slug}-roi",
         ))
 
     if _has_numeric(rows, "solidity") or _has_numeric(rows, "extent"):
         png = out_dir / "shape.png"
-        title = f"{label} — shape traits (solidity, extent)"
+        title = f"{label} · shape traits (solidity, extent)"
         render_shape_chart(rows, title=title, out_png=png)
         charts.append(Chart(
             title=title,
             alt=f"{label}: solidity and extent shape ratios over capture time",
             png_path=png,
+            chart_id=f"chart-{slug}-shape",
         ))
 
     return charts
@@ -495,6 +568,13 @@ nav a:hover, nav a:focus-visible { text-decoration: underline; }
 .card dl { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-3); margin: 0; }
 .card dt { color: var(--muted); }
 .card dd { margin: 0; font-variant-numeric: tabular-nums; }
+.card-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+.card-row:last-of-type { margin-bottom: 0; }
 .charts { display: grid; grid-template-columns: 1fr; gap: var(--space-3); }
 .chart { padding: var(--space-2); }
 .chart img { width: 100%; height: auto; display: block; }
@@ -517,6 +597,12 @@ table {
 caption { text-align: left; color: var(--muted); padding-bottom: var(--space-2); }
 td, th { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
 th[scope=col] { color: var(--muted); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.04em; }
+table.alert-table { table-layout: fixed; }
+.alert-table td:nth-child(2) { white-space: nowrap; }
+.alert-table td:nth-child(5), .alert-table td:nth-child(6),
+.alert-table th:nth-child(5), .alert-table th:nth-child(6) { text-align: right; }
+table.coverage { font-size: 0.85rem; }
+table.coverage td, table.coverage th { padding: var(--space-1) var(--space-2); }
 .empty { color: var(--muted); background: var(--surface-2); border-radius: 8px; padding: var(--space-3); }
 footer { color: var(--muted); }
 """
@@ -548,29 +634,74 @@ def _fmt_number(value: float | None) -> str:
     return "" if value is None else f"{value:.2f}"
 
 
+def _verdict(summary: DatasetSummary) -> str:
+    """Highest severity across a dataset's findings (``ok`` when none)."""
+    severities = {finding.severity for finding in summary.findings}
+    if "critical" in severities:
+        return "critical"
+    if "warn" in severities:
+        return "warn"
+    return "ok"
+
+
+def _area_delta(summary: DatasetSummary) -> str:
+    """First-to-last projected-area change for the card's second row."""
+    first, last = summary.area_first, summary.area_last
+    if first is None or last is None:
+        return '<span class="muted">area delta n/a</span>'
+    if first <= 0:
+        return f"{first:,.0f} → {last:,.0f} px"
+    pct = (last - first) / first * 100.0
+    return f"{first:,.0f} → {last:,.0f} px ({pct:+.1f}%)"
+
+
 def _overview_card(summary: DatasetSummary) -> str:
-    """Render one dataset overview card."""
+    """Render one dataset overview card (verdict + age + area delta)."""
     span = f"{summary.span_hours:.1f} h" if summary.span_hours is not None else "n/a"
     date_range = (
         f"{_escape(summary.first_at)} → {_escape(summary.last_at)}"
         if summary.first_at else "n/a"
     )
+    quality_measured = dict(summary.coverage).get("quality_flag", 0) > 0
+    quality = (
+        f"{summary.quality_rate_pct:.1f}%"
+        if quality_measured
+        else '<span class="muted">not measured</span>'
+    )
     return (
         '<article class="card">'
         f"<h3>{_escape(summary.label)}</h3>"
+        f'<p class="card-row">{_badge(_verdict(summary))}'
+        f"{_age_badge(summary.last_age_days)}</p>"
+        f'<p class="card-row">{_area_delta(summary)}</p>'
         "<dl>"
         f"<dt>Frames</dt><dd>{summary.rows}</dd>"
-        f"<dt>Zones</dt><dd>{summary.zones}</dd>"
         f"<dt>Date range</dt><dd>{date_range}</dd>"
         f"<dt>Span</dt><dd>{_escape(span)}</dd>"
-        f"<dt>Last frame</dt><dd>{_age_badge(summary.last_age_days)}</dd>"
-        f"<dt>Scale coverage</dt><dd>{summary.scale_pct:.1f}%</dd>"
-        f"<dt>Quality-flag rate</dt><dd>{summary.quality_rate_pct:.1f}%</dd>"
+        f"<dt>Scale coverage (all frames)</dt><dd>{summary.scale_pct:.1f}%</dd>"
+        f"<dt>Quality-flag rate</dt><dd>{quality}</dd>"
         f"<dt>Solidity rows</dt><dd>{summary.solidity_rows}/{summary.rows}</dd>"
-        f"<dt>Duplicates</dt><dd>{summary.duplicates}</dd>"
         "</dl>"
         "</article>"
     )
+
+
+_RULE_ANCHORS: dict[str, str] = {
+    "scale-coverage": "cm2",
+    "stale-data": "px",
+    "capture-gap": "px",
+}
+
+
+def _format_window(finding: Finding) -> str:
+    """Format a finding window as ``16 Oct 15:37 -> 17 Oct 07:57``."""
+    start = parse_timestamp(finding.window_start)
+    end = parse_timestamp(finding.window_end)
+    if start is not None and end is not None:
+        return f"{start:%d %b %H:%M} -> {end:%d %b %H:%M}"
+    if finding.window_start or finding.window_end:
+        return f"{_escape(finding.window_start)} -> {_escape(finding.window_end)}"
+    return ""
 
 
 def _alerts_section(
@@ -590,30 +721,39 @@ def _alerts_section(
         return (
             '<section id="alerts">'
             "<h2>Alerts</h2>"
-            '<p class="empty">No rule triggered — every metric is inside its '
+            '<p class="empty">No rule triggered · every metric is inside its '
             "threshold.</p>"
             "</section>"
         )
     rows = []
     for label, finding in tagged:
-        window = ""
-        if finding.window_start or finding.window_end:
-            window = f"{_escape(finding.window_start)} → {_escape(finding.window_end)}"
+        slug = _slug(label)
+        anchor = _RULE_ANCHORS.get(finding.rule_id)
+        rule_cell = (
+            f'<a href="#chart-{slug}-{anchor}">{_escape(finding.rule_id)}</a>'
+            if anchor else _escape(finding.rule_id)
+        )
         rows.append(
             "<tr>"
             f"<td>{_badge(finding.severity)}</td>"
-            f"<td>{_escape(label)} / {_escape(finding.zone)}</td>"
-            f"<td>{_escape(finding.rule_id)}</td>"
+            f'<td><a href="#dataset-{slug}">'
+            f"{_escape(label)} / {_escape(finding.zone)}</a></td>"
+            f"<td>{rule_cell}</td>"
             f"<td>{_escape(finding.detail)}</td>"
             f"<td>{_escape(_fmt_number(finding.value))}</td>"
             f"<td>{_escape(_fmt_number(finding.threshold))}</td>"
-            f"<td>{window}</td>"
+            f"<td>{_format_window(finding)}</td>"
             "</tr>"
         )
     return (
         '<section id="alerts">'
         "<h2>Alerts</h2>"
-        "<table>"
+        '<table class="alert-table">'
+        '<colgroup>'
+        '<col style="width:8%"><col style="width:16%"><col style="width:14%">'
+        '<col style="width:34%"><col style="width:8%"><col style="width:8%">'
+        '<col style="width:12%">'
+        "</colgroup>"
         "<caption>Rule findings (deterministic)</caption>"
         "<thead><tr>"
         '<th scope="col">Severity</th>'
@@ -641,7 +781,7 @@ def _coverage_table(summary: DatasetSummary) -> str:
         for column, count in summary.coverage
     )
     return (
-        "<table>"
+        '<table class="coverage">'
         "<caption>Column coverage</caption>"
         "<thead><tr>"
         '<th scope="col">Column</th>'
@@ -654,10 +794,11 @@ def _coverage_table(summary: DatasetSummary) -> str:
 
 
 def _chart_figure(chart: Chart) -> str:
-    """Render one embedded-PNG figure."""
+    """Render one embedded-PNG figure (anchor id when the chart has one)."""
     encoded = base64.b64encode(chart.png_path.read_bytes()).decode("ascii")
+    figure_id = f' id="{_escape(chart.chart_id)}"' if chart.chart_id else ""
     return (
-        '<figure class="chart">'
+        f'<figure class="chart"{figure_id}>'
         f'<img src="data:image/png;base64,{encoded}" alt="{_escape(chart.alt)}">'
         f"<figcaption>{_escape(chart.title)}</figcaption>"
         "</figure>"
@@ -721,9 +862,10 @@ def build_html(
             f'<section id="dataset-{_slug(summary.label)}">'
             f"<h2>{_escape(summary.label)}</h2>"
             f'<p class="muted">Source: {_escape(summary.source)}</p>'
-            f"{_coverage_table(summary)}"
+            f"{_note_html(summary.note)}"
             f"{shape_note}"
             f"{chart_block}"
+            f"{_coverage_table(summary)}"
             "</section>"
         )
 
@@ -769,7 +911,7 @@ def write_dashboard(
     *,
     now: datetime,
     pipeline_version: str = "unrecorded",
-    title: str = "PlantVision — growth dashboard",
+    title: str = "PlantVision · growth dashboard",
     config: RuleConfig | None = None,
 ) -> DashboardResult:
     """Render the dashboard for ``datasets`` and write it to ``out_path``.
@@ -805,6 +947,7 @@ def write_dashboard(
                 summarize(
                     dataset.label, str(dataset.csv_path), rows,
                     now=now, config=config,
+                    note=dataset.note,
                 )
             )
             charts_by_label[dataset.label] = render_charts(

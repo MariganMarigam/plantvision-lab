@@ -1,8 +1,9 @@
 """Build the static growth dashboard from one or more metrics CSVs.
 
-Prints exactly one JSON line: ``{"status": "ok", ...}`` on success or
-``{"status": "error", ...}`` on a data/IO failure (exit 1); argparse usage
-errors exit 2.
+The default basil dataset is the SAM2 bridge (mask-derived), not the legacy
+white-light classical series. Prints exactly one JSON line:
+``{"status": "ok", ...}`` on success or ``{"status": "error", ...}`` on a
+data/IO failure (exit 1); argparse usage errors exit 2.
 """
 
 from __future__ import annotations
@@ -16,7 +17,13 @@ from typing import Sequence
 from plantvision.analytics.dashboard import Dataset, write_dashboard
 
 _DEFAULT_DATASETS = (
-    Dataset("basil", Path("data/derived/metrics/timeseries.csv")),
+    Dataset(
+        "basil farm-02 · SAM2",
+        Path("data/derived/metrics/basil-farm02-sam2.csv"),
+        "SAM2 mask-derived series (sam2.1_hiera_small, marker prompt), not a "
+        "classical HSV/ExG measurement; rows flagged label_pending await human "
+        "review; scale recomputed per frame from the 45 mm ArUco tag.",
+    ),
     Dataset("lettuce", Path("data/derived/metrics/lettuce-timeseries.csv")),
 )
 
@@ -61,7 +68,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="pipeline label shown on the cm² chart",
     )
     parser.add_argument(
-        "--title", default="PlantVision — growth dashboard",
+        "--title", default="PlantVision · growth dashboard",
         help="page title",
     )
     parser.add_argument(

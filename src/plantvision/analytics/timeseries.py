@@ -358,6 +358,29 @@ def append_rows(path: str | Path, rows: Sequence[dict[str, str]]) -> int:
     return len(rows)
 
 
+def replace_rows(path: str | Path, rows: Sequence[dict[str, str]]) -> int:
+    """Replace the whole store atomically (derived rebuilds).
+
+    Args:
+        path: Store CSV path (parent dirs created on first write).
+        rows: String rows keyed by :data:`TIMESERIES_COLUMNS`.
+
+    Returns:
+        Number of data rows written. Empty ``rows`` writes the header only.
+
+    Raises:
+        OSError: If the store cannot be written (propagated from the atomic
+            temp-file + ``os.replace`` helper; no partial file is left).
+    """
+    p = Path(path)
+    ordered = [list(TIMESERIES_COLUMNS)]
+    for row in rows:
+        ordered.append([row.get(column, "") for column in TIMESERIES_COLUMNS])
+    p.parent.mkdir(parents=True, exist_ok=True)
+    _write_rows_atomic(p, ordered)
+    return len(rows)
+
+
 def points_from_rows(rows: Sequence[dict[str, str]]) -> list[PlotPoint]:
     """Convert stored rows to plot points (bad floats degrade to unscaled)."""
     points: list[PlotPoint] = []

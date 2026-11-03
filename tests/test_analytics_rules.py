@@ -261,3 +261,19 @@ def test_findings_grouped_by_zone() -> None:
     ]
     findings = evaluate_rules(rows, now=NOW)
     assert {finding.zone for finding in findings} == {"a", "b"}
+
+
+def test_time_relative_rules_state_as_of_when_data_is_stale() -> None:
+    """A 24 h statement on 16-day-old data must carry its real as-of date."""
+    values = [1000 + (0.5 if index % 2 else -0.5) for index in range(12)]
+    rows = _series(values, start="2026-10-16T00:00:00Z")
+    for row in rows:
+        row["quality_flag"] = "red"
+
+    findings = evaluate_rules(rows, now=NOW)
+    stalls = [f for f in findings if f.rule_id == "growth-stall"]
+    quality = [f for f in findings if f.rule_id == "quality-flag-rate"]
+    assert stalls and "(as of " in stalls[0].detail
+    assert quality and "(as of " in quality[0].detail
+    assert "over the last 24 h" in stalls[0].detail
+

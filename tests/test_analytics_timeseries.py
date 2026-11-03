@@ -14,6 +14,7 @@ from plantvision.analytics.timeseries import (
     format_row,
     load_frame_records,
     read_timeseries,
+    replace_rows,
     run_update,
 )
 from plantvision.vision.metrics import FrameMeasurement
@@ -186,6 +187,28 @@ def test_append_rows_empty_is_noop(tmp_path: Path) -> None:
     store = tmp_path / "metrics" / "timeseries.csv"
     assert append_rows(store, []) == 0
     assert not store.exists()
+
+
+def test_replace_rows_overwrites_store(tmp_path: Path) -> None:
+    """A full rewrite keeps exactly the new rows and leaves no temp file."""
+    store = tmp_path / "metrics" / "timeseries.csv"
+    append_rows(store, [_full_row("a" * 64), _full_row("b" * 64), _full_row("c" * 64)])
+    written = replace_rows(store, [_full_row("d" * 64)])
+    assert written == 1
+    rows = read_timeseries(store)
+    assert [row["sha256"] for row in rows] == ["d" * 64]
+    header = store.read_text(encoding="utf-8").splitlines()[0]
+    assert header == ",".join(TIMESERIES_COLUMNS)
+    assert list(store.parent.glob("*.tmp")) == []
+
+
+def test_replace_rows_empty_writes_header_only(tmp_path: Path) -> None:
+    """No rows still writes the canonical header and reads back empty."""
+    store = tmp_path / "metrics" / "timeseries.csv"
+    assert replace_rows(store, []) == 0
+    assert store.is_file()
+    assert store.read_text(encoding="utf-8").splitlines() == [",".join(TIMESERIES_COLUMNS)]
+    assert read_timeseries(store) == []
 
 
 def test_format_row_no_marker_is_flagged_not_dropped(tmp_path: Path) -> None:
