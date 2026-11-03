@@ -88,6 +88,57 @@ def test_line_marks_missing_scale_points() -> None:
     assert markup.count('class="pv-miss"') == 4
 
 
+def test_y_ticks_drop_decimals_when_axis_max_is_ten_or_more() -> None:
+    spec = ChartSpec(
+        chart_id="ch-cm2", title="Area", desc="cm2", unit="cm²", decimals=2
+    )
+    markup = line_chart(spec, [PlotSeries("A", [[(0, 120.0), (1000, 240.0)]])])
+    ticks = re.findall(r'<text x="46"[^>]*>([^<]*)</text>', markup)
+    assert ticks
+    assert all("." not in tick for tick in ticks)
+
+
+def test_y_ticks_keep_two_decimals_below_ten() -> None:
+    spec = ChartSpec(chart_id="ch-ratio", title="Ratio", desc="ratio", decimals=3)
+    markup = line_chart(spec, [PlotSeries("A", [[(0, 0.1), (1000, 0.9)]])])
+    ticks = re.findall(r'<text x="46"[^>]*>([^<]*)</text>', markup)
+    assert ticks
+    assert all(re.fullmatch(r"\d+\.\d{2}", tick) for tick in ticks)
+
+
+def test_multi_series_legend_replaces_end_labels() -> None:
+    markup = line_chart(
+        SPEC,
+        [
+            PlotSeries("A", [[(0, 87.0), (1000, 88.0)]], label="basil"),
+            PlotSeries("B", [[(0, 40.0), (1000, 41.0)]], label="lettuce"),
+        ],
+    )
+    assert 'class="pv-last"' not in markup
+    assert 'class="pv-series-legend"' in markup
+    assert "basil" in markup
+    assert "lettuce" in markup
+    assert "88.0" in markup
+    assert "41.0" in markup
+
+
+def test_single_series_keeps_one_end_label() -> None:
+    markup = line_chart(SPEC, [PlotSeries("A", [[(0, 1.0), (1000, 2.0)]], label="only")])
+    assert markup.count('class="pv-last"') == 1
+    assert 'class="pv-series-legend"' not in markup
+
+
+def test_grouped_bars_enforce_minimum_width_and_gap() -> None:
+    items = [BarItem(f"d{index}", float(index + 1)) for index in range(51)]
+    markup = bar_chart(SPEC, items, group_size=3)
+    bars = [a for a in _attrs(markup, "rect") if a.get("class") == "pv-bar"]
+    assert len(bars) == 51
+    widths = [float(attrs["width"]) for attrs in bars]
+    xs = sorted(float(attrs["x"]) for attrs in bars)
+    assert min(widths) >= 6.0
+    assert all(round(b - a, 3) >= 10.0 - 1e-6 for a, b in zip(xs, xs[1:]))
+
+
 def test_bar_width_and_gap_geometry() -> None:
     items = [BarItem(f"d{index}", float(index + 1)) for index in range(9)]
     markup = bar_chart(SPEC, items)

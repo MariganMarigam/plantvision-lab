@@ -163,17 +163,17 @@ _UI_RU: dict[str, str] = {
     ),
 }
 
-_CARD_META: tuple[tuple[str, str, str, str], ...] = (
-    ("ch-ov-kpi-rings", "overview", "status", "rings"),
-    ("ch-ov-frames-bars", "overview", "status", "bars-grouped"),
-    ("ch-ov-status-board", "overview", "status", "board"),
-    ("ch-ov-severity-donut", "overview", "kpi", "donut"),
-    ("ch-ov-coverage-strips", "overview", "kpi", "strips"),
-    ("ch-gr-area-px", "growth", "area-px", "line"),
-    ("ch-gr-area-cm2", "growth", "area-cm2", "line"),
-    ("ch-gr-rate-bars", "growth", "rate", "bars-diverging"),
-    ("ch-gr-daily-bars", "growth", "daily", "bars"),
-    ("ch-gr-daily-table", "growth", "daily", "table"),
+_CARD_META: tuple[tuple[str, str, str, str, int], ...] = (
+    ("ch-ov-kpi-rings", "overview", "status", "rings", 2),
+    ("ch-ov-frames-bars", "overview", "status", "bars-grouped", 1),
+    ("ch-ov-status-board", "overview", "status", "board", 3),
+    ("ch-ov-severity-donut", "overview", "kpi", "donut", 1),
+    ("ch-ov-coverage-strips", "overview", "kpi", "strips", 1),
+    ("ch-gr-area-px", "growth", "area-px", "line", 1),
+    ("ch-gr-area-cm2", "growth", "area-cm2", "line", 1),
+    ("ch-gr-rate-bars", "growth", "rate", "bars-diverging", 1),
+    ("ch-gr-daily-bars", "growth", "daily", "bars", 1),
+    ("ch-gr-daily-table", "growth", "daily", "table", 1),
 )
 
 _CARD_EN: dict[str, str] = {
@@ -607,6 +607,7 @@ class CARD:
     how: str
     do: str
     source: str = ""
+    span: int = 1
 
 
 CARDS: tuple[CARD, ...] = tuple(
@@ -619,8 +620,9 @@ CARDS: tuple[CARD, ...] = tuple(
         what=TEXTS["en"][f"{card_id}.what"],
         how=TEXTS["en"][f"{card_id}.how"],
         do=TEXTS["en"][f"{card_id}.do"],
+        span=span,
     )
-    for card_id, tab, sub, chart in _CARD_META
+    for card_id, tab, sub, chart, span in _CARD_META
 )
 
 ACTIONS: dict[str, str] = {
@@ -1223,16 +1225,34 @@ def _card_stats(card_id: str, payload: dict[str, object]) -> list[dict[str, str]
     ]
 
 
+_CARD_AXIS_UNIT: dict[str, str] = {
+    "ch-ov-frames-bars": "count",
+    "ch-gr-area-px": "px",
+    "ch-gr-area-cm2": "cm²",
+    "ch-gr-rate-bars": "%",
+    "ch-gr-daily-bars": "px",
+}
+
+_CHART_AXIS_UNIT: dict[str, str] = {
+    "line": "px",
+    "area": "px",
+    "bars": "px",
+    "bars-grouped": "count",
+    "bars-diverging": "%",
+}
+
+
 def _card_axes(card_id: str) -> dict[str, str]:
-    """Drawer axis block (empty for non-cartesian cards)."""
+    """Drawer axis block with the unit the card actually plots."""
     card = next((item for item in CARDS if item.id == card_id), None)
-    if card is None or card.chart not in {"line", "area", "bars", "bars-grouped", "bars-diverging"}:
+    if card is None or card.chart not in _CHART_AXIS_UNIT:
         return {}
+    unit = _CARD_AXIS_UNIT.get(card_id, _CHART_AXIS_UNIT[card.chart])
     return {
         "x_en": "captured_at (UTC)",
         "x_ru": "captured_at (UTC)",
-        "y_en": "value",
-        "y_ru": "значение",
+        "y_en": unit,
+        "y_ru": unit,
         "step_en": "automatic",
         "step_ru": "автоматически",
     }
@@ -1304,6 +1324,7 @@ def cards_for_payload(payload: dict[str, object]) -> list[dict[str, object]]:
                 "chart": card.chart,
                 "source": card.source,
                 "state": _state(card.id, payload),
+                "span": card.span,
                 "title_en": TEXTS["en"][f"{card.id}.title"],
                 "title_ru": TEXTS["ru"][f"{card.id}.title"],
                 "what_en": TEXTS["en"][f"{card.id}.what"],

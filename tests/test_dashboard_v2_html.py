@@ -265,6 +265,40 @@ def test_gate_one_shell_has_seven_coming_soon_tabs(page) -> None:
     assert len(re.findall(r'<button [^>]*role="tab" [^>]*data-tab=', html)) == 9
 
 
+def test_grid_data_cols_matches_visible_card_count(page) -> None:
+    html, _result, _panels = page
+    cols = re.findall(r'<div class="pv-grid" data-cols="(\d+)">', html)
+    assert cols == ["3", "2", "1", "1", "1", "2"]
+
+
+def test_card_span_is_clamped_to_grid_columns(page) -> None:
+    html, _result, _panels = page
+    rings = _card_markup(html, "ch-ov-kpi-rings")
+    board = _card_markup(html, "ch-ov-status-board")
+    single = _card_markup(html, "ch-gr-area-px")
+    assert 'data-span="2"' in rings
+    assert 'style="grid-column:span 2"' in rings
+    assert 'data-span="3"' in board
+    assert 'style="grid-column:span 3"' in board
+    # A one-card subpanel has one grid column, so its span clamps to 1.
+    assert 'style="grid-column:span 1"' in single
+
+
+def test_drawer_axes_emit_the_real_unit(page) -> None:
+    html, _result, _panels = page
+    payload = json.loads(
+        re.search(
+            r'<script type="application/json" id="pv-data">(.*?)</script>', html, re.S
+        ).group(1)
+    )
+    cards = {card["id"]: card for card in payload["cards"]}
+    assert cards["ch-ov-frames-bars"]["axes"]["y_en"] == "count"
+    assert cards["ch-gr-area-px"]["axes"]["y_en"] == "px"
+    assert cards["ch-gr-area-cm2"]["axes"]["y_en"] == "cm²"
+    assert cards["ch-gr-daily-bars"]["axes"]["y_en"] == "px"
+    assert cards["ch-gr-rate-bars"]["axes"]["y_en"] == "%"
+
+
 def test_no_crop_or_method_literals_in_src() -> None:
     root = Path(__file__).resolve().parent.parent / "src" / "plantvision" / "analytics" / "dashboard"
     pattern = re.compile(r"basil|lettuce|phone|sam2|exg", re.I)

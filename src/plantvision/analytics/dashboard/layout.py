@@ -54,13 +54,13 @@ a:hover{text-decoration:underline}
 .pv-rail button:hover{background:rgba(255,255,255,.06);color:var(--pv-head)}
 .pv-rail button[aria-selected=true]{background:linear-gradient(155deg,var(--pv-a0),var(--pv-a1));color:#241F42}
 .pv-rail svg{width:20px;height:20px;flex:none}
-.pv-rail-lbl{font-size:8.5px;line-height:1;letter-spacing:.02em;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv-rail-lbl{font-size:9.5px;line-height:1;letter-spacing:.02em;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pv-badge{position:absolute;transform:translate(16px,-14px);background:var(--pv-pos);color:#10251C;border-radius:999px;font-size:9px;font-weight:700;padding:1px 5px}
 .pv-shell{min-width:0}
 .pv-topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:18px;padding:10px 20px;
  background:rgba(27,23,48,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--pv-grid)}
-.pv-crumb{display:flex;align-items:baseline;gap:7px;font-size:12.5px;color:var(--pv-mut);white-space:nowrap}
-.pv-crumb strong{color:var(--pv-head);font-weight:600;font-size:13.5px}
+.pv-crumb{display:flex;align-items:baseline;gap:7px;font-size:13px;color:var(--pv-mut);white-space:nowrap}
+.pv-crumb strong{color:var(--pv-head);font-weight:600;font-size:14px}
 .pv-subtabs{display:flex;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
 .pv-subtabs::-webkit-scrollbar{display:none}
 .pv-subgroup{display:flex;gap:4px}
@@ -76,36 +76,38 @@ a:hover{text-decoration:underline}
 .pv-lang:hover{background:rgba(251,196,144,.12)}
 .pv-asof{font-size:11.5px;color:var(--pv-mut);font-variant-numeric:tabular-nums;white-space:nowrap}
 .pv-main{padding:20px;max-width:1680px;margin:0 auto}
-.pv-grid{display:grid;gap:var(--pv-gap);grid-template-columns:repeat(3,minmax(0,1fr));align-items:start}
+.pv-grid{display:grid;gap:var(--pv-gap);grid-template-columns:repeat(var(--pv-cols,3),minmax(0,1fr));align-items:start}
+.pv-grid[data-cols="1"]{--pv-cols:1}
+.pv-grid[data-cols="2"]{--pv-cols:2}
 .pv-subpanel[hidden]{display:none}
 .pv-card{position:relative;background:linear-gradient(155deg,var(--pv-card),#2A254B);border:1px solid transparent;
  border-radius:var(--pv-r-card);padding:var(--pv-pad);min-width:0;transition:transform .18s,border-color .18s}
 [data-tier=high] .pv-card:hover{transform:translateY(-2px);border-color:rgba(251,196,144,.4)}
 .pv-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
-.pv-card-head h3{margin:0;font-size:15px;font-weight:600;color:var(--pv-head)}
+.pv-card-head h3{margin:0;font-size:16px;font-weight:600;color:var(--pv-head)}
 .pv-figure{position:relative;margin:0;min-height:0}
 .pv-figure .pv-chart{width:100%;height:auto;display:block}
-.pv-chart text{font-size:10.5px;fill:var(--pv-mut);font-family:FONT_STACK}
+.pv-chart text{font-size:11.5px;fill:var(--pv-mut);font-family:FONT_STACK}
 .pv-chart .pv-ax{fill:var(--pv-mut)}
-.pv-chart .pv-last{fill:var(--pv-head);font-size:10.5px;font-weight:600}
-.pv-chart .pv-bar-val{fill:var(--pv-head);font-size:10px}
+.pv-chart .pv-last{fill:var(--pv-head);font-size:11.5px;font-weight:600}
+.pv-chart .pv-bar-val{fill:var(--pv-head);font-size:11.5px}
 .pv-chart .pv-ring-val{fill:var(--pv-head);font-size:19px;font-weight:700}
 .pv-chart .pv-donut-val{fill:var(--pv-head);font-size:30px;font-weight:700}
-.pv-chart .pv-donut-lbl{fill:var(--pv-mut);font-size:11px}
-.pv-chart .pv-legend{fill:var(--pv-ink);font-size:10px}
+.pv-chart .pv-donut-lbl{fill:var(--pv-mut);font-size:11.5px}
+.pv-chart .pv-legend{fill:var(--pv-ink);font-size:11.5px}
 [data-tier=high] .pv-draw{stroke-dasharray:1;stroke-dashoffset:1;animation:pv-draw 900ms .1s ease-out forwards}
 @keyframes pv-draw{to{stroke-dashoffset:0}}
 .pv-ringrow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 .pv-ring{min-width:0;text-align:center}
 .pv-ring svg{width:100%;height:auto;max-width:132px}
-.pv-ring-lbl{display:block;font-size:10.5px;color:var(--pv-mut);margin-top:-2px}
+.pv-ring-lbl{display:block;font-size:11.5px;color:var(--pv-mut);margin-top:-2px}
 .pv-open{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent;cursor:pointer;border-radius:6px}
 .pv-open:focus-visible{outline:2px solid var(--pv-focus);outline-offset:2px}
-.pv-explain{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;font-size:12px;
+.pv-explain{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;font-size:14px;
  border-top:1px solid var(--pv-grid);padding-top:8px;margin:10px 0 0}
 .pv-explain dt{color:var(--pv-mut);white-space:nowrap}
 .pv-explain dd{margin:0;color:var(--pv-ink);min-width:0}
-.pv-concl{font-size:12.5px;color:var(--pv-ink);border-left:2px solid var(--pv-a0);padding-left:8px;margin:10px 0 0}
+.pv-concl{font-size:14px;color:var(--pv-ink);border-left:2px solid var(--pv-a0);padding-left:8px;margin:10px 0 0}
 .pv-zero{opacity:.6}
 .pv-chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600;
  white-space:nowrap;border:1px solid transparent}
@@ -122,11 +124,11 @@ a:hover{text-decoration:underline}
 .pv-chip[data-state=not-computable]::before,.pv-chip[data-state=unknown]::before{content:"?"}
 .pv-tablewrap{overflow-x:auto;max-width:100%}
 .pv-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:12.5px}
-.pv-card .pv-table{font-size:11.5px}
+.pv-card .pv-table{font-size:12.5px}
 .pv-card .pv-table td,.pv-card .pv-table th{padding:4px 6px}
-.pv-table caption{text-align:left;color:var(--pv-mut);padding-bottom:6px;font-size:11.5px}
+.pv-table caption{text-align:left;color:var(--pv-mut);padding-bottom:6px;font-size:12.5px}
 .pv-table th{position:sticky;top:0;background:var(--pv-card);color:var(--pv-mut);text-transform:uppercase;
- letter-spacing:.04em;font-size:10.5px;font-weight:600;padding:6px 8px;text-align:left;border-bottom:1px solid var(--pv-grid)}
+ letter-spacing:.04em;font-size:11.5px;font-weight:600;padding:6px 8px;text-align:left;border-bottom:1px solid var(--pv-grid)}
 .pv-table td{padding:6px 8px;border-bottom:1px solid var(--pv-grid);vertical-align:top}
 .pv-table tr:last-child td{border-bottom:0}
 .pv-table .num{text-align:right}
@@ -135,7 +137,7 @@ a:hover{text-decoration:underline}
 .pv-empty-t{color:var(--pv-head);font-weight:600;margin:0 0 4px}
 .pv-coming{grid-column:1/-1;text-align:center;padding:56px 20px}
 .pv-coming h2{margin:0 0 8px;color:var(--pv-head);font-size:18px}
-.pv-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--pv-mut);margin-top:6px}
+.pv-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--pv-mut);margin-top:6px}
 .pv-legend span{display:inline-flex;align-items:center;gap:5px}
 .pv-legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
 .pv-backdrop{position:fixed;inset:0;background:rgba(10,8,24,.6);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
@@ -149,14 +151,14 @@ a:hover{text-decoration:underline}
 .pv-close{border:0;border-radius:var(--pv-r-ctrl);background:rgba(255,255,255,.08);color:var(--pv-head);
  font:inherit;font-size:12px;padding:7px 12px;cursor:pointer}
 .pv-close:hover{background:rgba(255,255,255,.14)}
-.pv-drawer-body{padding:18px 22px 40px}
+.pv-drawer-body{padding:18px 22px 40px;font-size:13.5px}
 .pv-drawer-h2{margin:0 0 14px;font-size:19px;color:var(--pv-head)}
 .pv-drawer-figure{margin:0 0 16px;background:rgba(27,23,48,.45);border-radius:8px;padding:10px}
-.pv-drawer-figure .pv-chart{width:100%;height:auto}
-.pv-drawer-block{margin:0 0 16px}
-.pv-drawer-block h3{margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--pv-mut)}
+.pv-drawer-figure .pv-chart{width:100%;height:auto;max-height:44vh}
+.pv-drawer-block{margin:0 0 14px}
+.pv-drawer-block h3{margin:0 0 4px;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--pv-mut)}
 .pv-drawer-block p{margin:0;color:var(--pv-ink)}
-.pv-drawer-block dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 14px;margin:0;font-size:12.5px}
+.pv-drawer-block dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 14px;margin:0;font-size:13.5px}
 .pv-drawer-block dt{color:var(--pv-mut)}
 .pv-drawer-block dd{margin:0;font-variant-numeric:tabular-nums}
 .pv-thr{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px}
@@ -164,14 +166,15 @@ a:hover{text-decoration:underline}
 .pv-tip{position:fixed;z-index:60;pointer-events:none;background:#221D3E;color:var(--pv-head);border:1px solid rgba(255,255,255,.14);
  border-radius:6px;padding:5px 8px;font-size:11.5px;font-variant-numeric:tabular-nums;box-shadow:0 8px 20px rgba(10,8,24,.4)}
 .pv-tip[hidden]{display:none}
-@media (max-width:1199px){.pv-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1199px){.pv-grid{--pv-cols:2}.pv-grid>.pv-card[data-span="3"]{grid-column:span 2!important}}
 @media (max-width:899px){
  .pv-app{grid-template-columns:1fr}
  .pv-rail{position:sticky;top:0;height:auto;flex-direction:row;overflow-x:auto;padding:8px 10px;scroll-snap-type:x proximity}
  .pv-rail button{scroll-snap-align:center}
  .pv-topbar{position:static;flex-wrap:wrap;gap:8px}
  .pv-main{padding:14px}
- .pv-grid{grid-template-columns:1fr}
+ .pv-grid{--pv-cols:1}
+ .pv-grid>.pv-card{grid-column:span 1!important}
  .pv-card{padding:16px}
  .pv-drawer{width:100vw;border-radius:0}
  .pv-ringrow{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -494,9 +497,17 @@ def _daily_table(payload: dict[str, object], lang: str) -> str:
     )
 
 
-def _card(card: dict[str, object], svg: str, payload: dict[str, object], lang: str) -> str:
+def _card(
+    card: dict[str, object],
+    svg: str,
+    payload: dict[str, object],
+    lang: str,
+    cols: int = 3,
+) -> str:
     """One bento card with its explainer strip and conclusion."""
     card_id = str(card["id"])
+    span = max(1, int(card.get("span", 1) or 1))
+    clamped = max(1, min(span, cols))
     chart = str(card.get("chart", ""))
     if chart == "board":
         figure = _board_table(payload, lang)
@@ -538,6 +549,7 @@ def _card(card: dict[str, object], svg: str, payload: dict[str, object], lang: s
     return (
         f'<article class="pv-card" id="pv-card-{card_id}" data-chart="{card_id}" '
         f'data-tab="{esc(str(card["tab"]))}" data-sub="{esc(str(card["sub"]))}" '
+        f'data-span="{span}" style="grid-column:span {clamped}" '
         f'data-key="{esc("area_cm2" if "cm2" in card_id else "area_px" if "area-px" in card_id else "")}">'
         '<header class="pv-card-head">'
         + _leaf("h3", title_en, title_ru, lang)
@@ -593,13 +605,14 @@ def _panel(
     for index, sub in enumerate(SUBS.get(tab, ())):
         sub_hidden = "" if index == 0 else " hidden"
         sub_cards = [card for card in cards if card.get("sub") == sub]
+        cols = max(1, min(len(sub_cards), 3))
         markup = "".join(
-            _card(card, svgs.get(str(card["id"]), ""), payload, lang)
+            _card(card, svgs.get(str(card["id"]), ""), payload, lang, cols)
             for card in sub_cards
         )
         groups.append(
             f'<div class="pv-subpanel" data-tab="{tab}" data-sub="{sub}"{sub_hidden}>'
-            f'<div class="pv-grid">{markup or ""}</div></div>'
+            f'<div class="pv-grid" data-cols="{cols}">{markup or ""}</div></div>'
         )
     return (
         f'<section role="tabpanel" id="pv-panel-{tab}" aria-labelledby="pv-tab-{tab}"'

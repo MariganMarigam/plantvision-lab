@@ -31,6 +31,9 @@ from .svg import (
 PAD_L, PAD_R, PAD_T, PAD_B = 52, 18, 18, 40
 PLOT_W = 650
 PLOT_H = 182
+X_LABEL_Y = PAD_T + PLOT_H + 26
+X_TITLE_Y = PAD_T + PLOT_H + 38
+LEGEND_Y = PAD_T + PLOT_H + 58
 
 
 @dataclass(frozen=True)
@@ -240,11 +243,11 @@ def _axes(
     y_lo: float,
     y_hi: float,
     width: int,
-    height: int,
 ) -> str:
     """Grid, y labels, x labels and axis titles for a cartesian plot."""
     y_scale = linear((y_lo, y_hi), (PAD_T + PLOT_H, PAD_T))
     x_scale = linear((x_lo, x_hi), (PAD_L, PAD_L + PLOT_W))
+    tick_decimals = 0 if y_hi >= 10.0 else 2
     parts: list[str] = []
     ticks, _step = nice_ticks(y_lo, y_hi, 4)
     for tick in ticks:
@@ -255,7 +258,7 @@ def _axes(
         )
         parts.append(
             f'<text x="46" y="{num(y)}" class="pv-ax" text-anchor="end" '
-            f'dominant-baseline="middle">{esc(num(tick, spec.decimals))}</text>'
+            f'dominant-baseline="middle">{esc(num(tick, tick_decimals))}</text>'
         )
     hours_span = (x_hi - x_lo) / 3_600_000.0
     if x_hi > x_lo:
@@ -268,12 +271,12 @@ def _axes(
                     f'y2="{PAD_T + PLOT_H}" stroke="var(--pv-grid)" stroke-width="1"/>'
                 )
             parts.append(
-                f'<text x="{num(x)}" y="{height - 14}" class="pv-ax" '
+                f'<text x="{num(x)}" y="{X_LABEL_Y}" class="pv-ax" '
                 f'text-anchor="middle">{esc(_time_label(timestamp, hours_span=hours_span))}'
                 "</text>"
             )
     parts.append(
-        text(PAD_L + PLOT_W / 2, height - 2, "captured_at (UTC)", anchor="middle")
+        text(PAD_L + PLOT_W / 2, X_TITLE_Y, "captured_at (UTC)", anchor="middle")
     )
     unit = spec.unit or "value"
     parts.append(
@@ -352,14 +355,23 @@ def line_chart(
         return not_measured_panel(spec, "no numeric points in this store")
     values = [point[1] for item in series for run in item.runs for point in run]
     all_runs = [run for item in series for run in item.runs]
+    drawable = [item for item in series if any(item.runs)]
+    multi = len(drawable) > 1
+    chart_height = height + (26 if multi else 0)
     y_lo, y_hi = _y_domain(values, floor_zero=y_floor_zero)
     x_lo, x_hi = _x_domain(all_runs)
     y_scale = linear((y_lo, y_hi), (PAD_T + PLOT_H, PAD_T))
     x_scale = linear((x_lo, x_hi), (PAD_L, PAD_L + PLOT_W))
     parts = [
-        chart_open(width, height, chart_id=spec.chart_id, title=spec.title, desc=spec.desc),
+        chart_open(
+            width,
+            chart_height,
+            chart_id=spec.chart_id,
+            title=spec.title,
+            desc=spec.desc,
+        ),
         _defs(),
-        _axes(spec, x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi, width=width, height=height),
+        _axes(spec, x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi, width=width),
     ]
     parts.extend(_band_rect(band, y_scale, y_lo, y_hi) for band in bands)
     parts.extend(
@@ -387,7 +399,7 @@ def line_chart(
                     f'<circle cx="{num(x_scale(point[0]))}" '
                     f'cy="{num(y_scale(point[1]))}" r="1.9" fill="{stroke}"/>'
                 )
-        if item.runs:
+        if item.runs and not multi:
             last = item.runs[-1][-1]
             parts.append(
                 f'<text x="700" y="{30 + series_index * 14}" class="pv-last" '
@@ -395,17 +407,44 @@ def line_chart(
                 "</text>"
             )
         parts.append("</g>")
+    if multi:
+        parts.append(_series_legend(drawable, spec))
     if total_points > 0:
         for timestamp in missing:
             clamped = min(max(float(timestamp), x_lo), x_hi)
             x = x_scale(clamped)
-            y = height - 46
+            y = PAD_T + PLOT_H - 6
             parts.append(
                 f'<path class="pv-miss" d="M{num(x - 3)} {y} l6 6 '
                 f'M{num(x + 3)} {y} l-6 6" stroke="var(--pv-neg)" '
                 'stroke-width="1.6" fill="none"/>'
             )
     parts.append(chart_close())
+    return "".join(parts)
+
+
+def _series_legend(series: Sequence[PlotSeries], spec: ChartSpec) -> str:
+    """One legend row under a multi-series chart: swatch, name, last value."""
+    if not series:
+        return ""
+    slot_width = PLOT_W / len(series)
+    parts = ['<g class="pv-series-legend">']
+    for index, item in enumerate(series):
+        x = PAD_L + index * slot_width
+        slot = item.slot if item.slot in _SLOT_STROKE else "A"
+        parts.append(
+            f'<line x1="{num(x)}" y1="{LEGEND_Y}" x2="{num(x + 12)}" '
+            f'y2="{LEGEND_Y}" stroke="{_SLOT_STROKE[slot]}" stroke-width="3" '
+            'stroke-linecap="round"/>'
+        )
+        last = item.runs[-1][-1]
+        label = item.label or slot
+        limit = max(4, int((slot_width - 26) / 6.2))
+        if len(label) > limit:
+            label = label[:limit - 1] + "…"
+        value = f"{num(last[1], spec.decimals)} {spec.unit}".strip()
+        parts.append(text(x + 18, LEGEND_Y + 4, f"{label} · {value}", cls="pv-legend"))
+    parts.append("</g>")
     return "".join(parts)
 
 
@@ -429,7 +468,7 @@ def area_chart(
     parts = [
         chart_open(width, height, chart_id=spec.chart_id, title=spec.title, desc=spec.desc),
         _defs(),
-        _axes(spec, x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi, width=width, height=height),
+        _axes(spec, x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi, width=width),
     ]
     baseline = y_scale(0.0)
     for run in runs:
@@ -488,10 +527,19 @@ def bar_chart(
     measured = [item.value for item in items if item.value is not None]
     if not measured:
         return not_measured_panel(spec, "no measured values")
-    parts = [chart_open(width, height, chart_id=spec.chart_id, title=spec.title, desc=spec.desc)]
     count = len(items)
-    if group_size > 1:
-        parts.append(_grouped_bars(items, group_size, measured, series_labels))
+    grouped = group_size > 1 and count > 1
+    plot_w = max(PLOT_W, count * 10) if grouped else PLOT_W
+    view_w = PAD_L + plot_w + PAD_R if grouped else width
+    parts = [
+        chart_open(
+            view_w, height, chart_id=spec.chart_id, title=spec.title, desc=spec.desc
+        )
+    ]
+    if grouped:
+        parts.append(
+            _grouped_bars(items, group_size, measured, series_labels, plot_w)
+        )
     else:
         if diverging:
             lo = min(0.0, min(measured))
@@ -537,12 +585,14 @@ def _grouped_bars(
     group_size: int,
     measured: Sequence[float],
     series_labels: Sequence[str],
+    plot_w: float,
 ) -> str:
     """Grouped bar geometry (day-major, panel-minor)."""
     n_groups = math.ceil(len(items) / group_size)
-    group_w = PLOT_W / n_groups
-    inner = group_w - 16
-    bar_w = min(18.0, (inner - 4 * (group_size - 1)) / group_size)
+    group_w = plot_w / n_groups
+    gap = 4.0
+    bar_w = min(18.0, max(6.0, (group_w - gap * (group_size - 1)) / group_size))
+    group_content = group_size * bar_w + gap * (group_size - 1)
     hi = max(measured) if max(measured) > 0 else 1.0
     y_scale = linear((0.0, hi), (PAD_T + 142, PAD_T))
     baseline = y_scale(0.0)
@@ -560,11 +610,12 @@ def _grouped_bars(
             )
     for group in range(n_groups):
         items_in_group = items[group * group_size:(group + 1) * group_size]
+        group_x = PAD_L + group * group_w + (group_w - group_content) / 2
         for offset, item in enumerate(items_in_group):
             if item.value is None:
                 continue
             slot = ("A", "B", "C")[offset % 3]
-            x = PAD_L + group * group_w + 4 + offset * (bar_w + 4)
+            x = group_x + offset * (bar_w + gap)
             y_value = y_scale(max(0.0, item.value))
             parts.append(
                 f'<rect class="pv-bar" x="{num(x)}" width="{num(bar_w)}" '
