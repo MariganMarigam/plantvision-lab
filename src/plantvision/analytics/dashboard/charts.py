@@ -888,6 +888,22 @@ def box_plot(
     return "".join(parts)
 
 
+def _ring_stroke(value: float) -> str:
+    """Stroke colour for a measured ring value: mint, amber, or the coral gradient.
+
+    Args:
+        value: Percentage value already clamped to ``0..100``.
+
+    Returns:
+        CSS colour or gradient reference for the progress arc.
+    """
+    if value >= 90:
+        return "var(--pv-pos)"
+    if value >= 50:
+        return "#E0A800"
+    return "url(#pv-grad-a)"
+
+
 def ring(
     value: float | None,
     *,
@@ -923,7 +939,7 @@ def ring(
         offset = circumference * (1.0 - clamped / 100.0)
         parts.append(
             f'<circle cx="{num(centre)}" cy="{num(centre)}" r="{num(radius)}" '
-            f'fill="none" stroke="url(#pv-grad-a)" stroke-width="{stroke}" '
+            f'fill="none" stroke="{_ring_stroke(clamped)}" stroke-width="{stroke}" '
             'stroke-linecap="round" '
             f'transform="rotate(-90 {num(centre)} {num(centre)})" '
             f'stroke-dasharray="{num(circumference)}" '
@@ -932,7 +948,7 @@ def ring(
     parts.append(
         f'<text x="{num(centre)}" y="{num(centre + 6)}" class="pv-ring-val" '
         f'text-anchor="middle">'
-        f'{"—" if clamped is None else f"{clamped:.0f}%"}</text>'
+        f'{"not measured" if clamped is None else f"{clamped:.0f}%"}</text>'
     )
     parts.append(chart_close())
     parts.append(f'<span class="pv-ring-lbl">{esc(label)}</span></div>')

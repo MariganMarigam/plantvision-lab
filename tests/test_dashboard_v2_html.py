@@ -13,6 +13,7 @@ import pytest
 
 from plantvision.analytics.dashboard.build import Panel, build_report
 from plantvision.analytics.dashboard.copy import TEXTS
+from plantvision.analytics.dashboard.layout import CSS
 from plantvision.analytics.timeseries import TIMESERIES_COLUMNS
 
 NOW = datetime(2026, 11, 3, 12, 0, tzinfo=timezone.utc)
@@ -331,11 +332,35 @@ def test_card_span_is_clamped_to_grid_columns(page) -> None:
     board = _card_markup(html, "ch-ov-status-board")
     single = _card_markup(html, "ch-gr-area-px")
     assert 'data-span="2"' in rings
-    assert 'style="grid-column:span 2"' in rings
     assert 'data-span="3"' in board
-    assert 'style="grid-column:span 3"' in board
     # A one-card subpanel has one grid column, so its span clamps to 1.
-    assert 'style="grid-column:span 1"' in single
+    assert 'data-span="1"' in single
+
+
+def test_no_inline_grid_column_in_markup(page) -> None:
+    html, _result, _panels = page
+    assert 'style="grid-column:span' not in html
+    assert not re.search(r'style="[^"]*grid-column', html)
+
+
+def test_every_emitted_span_is_valid(page) -> None:
+    html, _result, _panels = page
+    spans = re.findall(r'<article class="pv-card"[^>]*data-span="(\d+)"', html)
+    assert spans
+    assert set(spans) <= {"1", "2", "3"}
+
+
+def test_mobile_span_reset_wins_over_tablet_rule() -> None:
+    tablet_at = CSS.index("@media (max-width:1199px)")
+    mobile_at = CSS.index("@media (max-width:899px)")
+    assert tablet_at < mobile_at
+    tablet = CSS[tablet_at:mobile_at]
+    mobile = CSS[mobile_at:]
+    assert '.pv-grid>.pv-card[data-span="3"]{grid-column:span 2!important}' in tablet
+    assert '.pv-grid>.pv-card[data-span="2"]' in tablet
+    assert ".pv-grid>.pv-card[data-span]{grid-column:span 1!important}" in mobile
+    assert "grid-auto-columns:0" in CSS
+    assert "overflow-x:clip" in CSS
 
 
 def test_drawer_axes_emit_the_real_unit(page) -> None:

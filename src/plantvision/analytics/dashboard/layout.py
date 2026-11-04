@@ -75,10 +75,12 @@ a:hover{text-decoration:underline}
  font:inherit;font-size:11.5px;font-weight:700;padding:5px 9px;cursor:pointer;letter-spacing:.06em}
 .pv-lang:hover{background:rgba(251,196,144,.12)}
 .pv-asof{font-size:11.5px;color:var(--pv-mut);font-variant-numeric:tabular-nums;white-space:nowrap}
-.pv-main{padding:20px;max-width:1680px;margin:0 auto}
-.pv-grid{display:grid;gap:var(--pv-gap);grid-template-columns:repeat(var(--pv-cols,3),minmax(0,1fr));align-items:start}
-.pv-grid[data-cols="1"]{--pv-cols:1}
-.pv-grid[data-cols="2"]{--pv-cols:2}
+.pv-main{padding:20px;max-width:1680px;margin:0 auto;overflow-x:clip}
+.pv-grid{display:grid;gap:var(--pv-gap);grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-columns:0;align-items:start}
+.pv-grid[data-cols="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+.pv-grid[data-cols="1"]{grid-template-columns:minmax(0,1fr)}
+.pv-grid>.pv-card[data-span="2"]{grid-column:span 2}
+.pv-grid>.pv-card[data-span="3"]{grid-column:span 3}
 .pv-subpanel[hidden]{display:none}
 .pv-card{position:relative;background:linear-gradient(155deg,var(--pv-card),#2A254B);border:1px solid transparent;
  border-radius:var(--pv-r-card);padding:var(--pv-pad);min-width:0;transition:transform .18s,border-color .18s}
@@ -166,15 +168,16 @@ a:hover{text-decoration:underline}
 .pv-tip{position:fixed;z-index:60;pointer-events:none;background:#221D3E;color:var(--pv-head);border:1px solid rgba(255,255,255,.14);
  border-radius:6px;padding:5px 8px;font-size:11.5px;font-variant-numeric:tabular-nums;box-shadow:0 8px 20px rgba(10,8,24,.4)}
 .pv-tip[hidden]{display:none}
-@media (max-width:1199px){.pv-grid{--pv-cols:2}.pv-grid>.pv-card[data-span="3"]{grid-column:span 2!important}}
+@media (max-width:1199px){.pv-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .pv-grid>.pv-card[data-span="2"],.pv-grid>.pv-card[data-span="3"]{grid-column:span 2!important}}
 @media (max-width:899px){
  .pv-app{grid-template-columns:1fr}
  .pv-rail{position:sticky;top:0;height:auto;flex-direction:row;overflow-x:auto;padding:8px 10px;scroll-snap-type:x proximity}
  .pv-rail button{scroll-snap-align:center}
  .pv-topbar{position:static;flex-wrap:wrap;gap:8px}
  .pv-main{padding:14px}
- .pv-grid{--pv-cols:1}
- .pv-grid>.pv-card{grid-column:span 1!important}
+ .pv-grid{grid-template-columns:minmax(0,1fr)}
+ .pv-grid>.pv-card[data-span]{grid-column:span 1!important}
  .pv-card{padding:16px}
  .pv-drawer{width:100vw;border-radius:0}
  .pv-ringrow{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -553,7 +556,7 @@ def _card(
     return (
         f'<article class="pv-card" id="pv-card-{card_id}" data-chart="{card_id}" '
         f'data-tab="{esc(str(card["tab"]))}" data-sub="{esc(str(card["sub"]))}" '
-        f'data-span="{span}" style="grid-column:span {clamped}" '
+        f'data-span="{clamped}" '
         f'data-key="{esc("area_cm2" if "cm2" in card_id else "area_px" if "area-px" in card_id else "")}">'
         '<header class="pv-card-head">'
         + _leaf("h3", title_en, title_ru, lang)

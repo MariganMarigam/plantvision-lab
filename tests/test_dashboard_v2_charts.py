@@ -190,11 +190,25 @@ def test_ring_dashoffset_matches_value() -> None:
     assert "72%" in markup
 
 
+def test_ring_stroke_follows_value_thresholds() -> None:
+    def _stroke(value: float) -> str:
+        markup = ring(value, label="scale", chart_id="ch-ring-threshold")
+        progress = [a for a in _attrs(markup, "circle") if "stroke-dashoffset" in a]
+        assert len(progress) == 1
+        return progress[0]["stroke"]
+
+    assert _stroke(100) == "var(--pv-pos)"
+    assert _stroke(60) == "#E0A800"
+    assert _stroke(10) == "url(#pv-grad-a)"
+
+
 def test_ring_not_measured_when_none() -> None:
     markup = ring(None, label="quality", chart_id="ch-ring-none")
-    assert "—" in markup
+    circles = _attrs(markup, "circle")
+    assert [a["stroke"] for a in circles] == ["var(--pv-track)"]
+    assert "not measured" in markup
     assert 'data-state="not-measured"' in markup
-    assert "0%" not in markup
+    assert "%" not in markup
 
 
 def test_donut_segments_sum_to_360() -> None:
