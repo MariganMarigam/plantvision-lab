@@ -227,9 +227,12 @@ Exit codes: `0` ok, `1` data/IO/YAML error, `2` argparse usage, `3` page over
 
 ### Budgets
 
-Page < 1 MiB (hard, exit 3); payload JSON < 400 kB; embedded frames < 300 kB
-(quality ladder 58 -> 45 -> drop). The page contains no `http://`, `https://`,
-`<link>`, `@import` or webfont, so it works from `file://`.
+Page hard gate 1 MiB (exit 3). The accepted build ranges are 620 000–700 000
+bytes with the default static-growth fallback and 480 000–560 000 bytes with
+`--no-static-growth`; payload JSON stays under 240 kB and embedded frames under
+300 kB (quality ladder 58 -> 45 -> drop). The inline client renderer budget is
+60 000 characters. The page contains no `http://`, `https://`, `<link>`,
+`@import` or webfont, so it works from `file://`.
 
 ### Language
 
@@ -290,7 +293,9 @@ rm -f tests/test_dashboard_v2_model.py tests/test_dashboard_v2_charts.py \
 ## Control bar
 
 The sticky top bar carries six controls before the language toggle:
-`[crop] [window] [aggregation] [mode] [reset] [snapshot] [EN]`.
+`[crop] [window] [aggregation] [mode] [reset] [snapshot] [EN]`. Per-panel
+freshness is shown once, as the age column of the Overview status board; the
+top bar stays unclipped at 1280 and 1440.
 
 | Control | Values | Default | Applies to |
 |---|---|---|---|
@@ -303,6 +308,13 @@ The sticky top bar carries six controls before the language toggle:
 
 The last checked crop cannot be unchecked. A selected panel with no frames in
 the window stays in the legend, muted, with its last-frame date.
+
+Growth card copy follows the crop filter. The payload carries `now_parts` and
+`conclusion_parts` keyed by panel id plus `now_join` / `conclusion_join`
+templates; the client joins only the selected panels in config order. With all
+crops selected the precomputed sentence is rendered unchanged. The `do` line
+switches to `ui.do.ok` when every selected panel is healthy and to the
+rule-specific action when any selected panel is critical.
 
 ## Hash grammar
 
@@ -329,7 +341,8 @@ Examples:
 
 Snapshot export runs entirely in the browser and writes `pv-snapshot/1`:
 `schema, generated_at, now_source, page, filters, window, panels, cards,
-sources, thumbnails, thumbnail_state`. Panel series points are
+sources, thumbnails, thumbnail_state`. `generated_at` and every `now` value are
+UTC ISO-8601 strings ending in `Z` (never `+00:00`). Panel series points are
 `[ISO-8601 Z string, number]`; `null` values are omitted but counted in
 `stats.missing`; floats are rounded to six decimals. The JSON is key-sorted and
 contains no SVG.
@@ -352,9 +365,12 @@ per-metric `A | B | Δ` rows with `|Δ| ≤ 1e-9` collapsed as unchanged.
 
 | Budget | Limit |
 |---|---|
-| page | 1 MiB, hard gate, exit 3 |
+| page, hard gate | 1 MiB, exit 3 |
+| page, default (`--static-growth`) | 620 000–700 000 bytes |
+| page, lean (`--no-static-growth`) | 480 000–560 000 bytes |
 | payload JSON | 240 kB, hard gate, exit 3 |
 | embedded frames | 300 kB, quality ladder 58 -> 45 -> drop |
+| inline client renderer | 60 000 characters |
 
 The page contains no `http://`, `https://`, `<link>`, `@import` or webfont, so
 it works from `file://`.

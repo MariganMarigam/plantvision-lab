@@ -1049,8 +1049,8 @@ def build_payload(
     return {
         "schema": "pv-dashboard/2",
         "title": title,
-        "generated_at": now_utc.isoformat() if now_source == "cli" else None,
-        "now": now_utc.isoformat(),
+        "generated_at": _iso_z(now_utc) if now_source == "cli" else None,
+        "now": _iso_z(now_utc),
         "now_source": now_source,
         "totals": totals,
         "panels": panels,

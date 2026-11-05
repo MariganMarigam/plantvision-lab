@@ -130,6 +130,10 @@ _UI_EN: dict[str, str] = {
     "ui.filter.hideNote": "Hidden panels leave the axis unchanged",
     "ui.filter.capped": "showing 3 of {n} panels",
     "ui.filter.noFrames": "no frames in {window}",
+    "ui.do.ok": (
+        "All selected panels are healthy; keep the current capture cadence and "
+        "thresholds."
+    ),
     "ui.fresh.fresh": "fresh",
     "ui.fresh.warn": "aging",
     "ui.fresh.stale": "stale",
@@ -259,6 +263,9 @@ _UI_RU: dict[str, str] = {
     "ui.filter.hideNote": "Скрытые панели не меняют ось",
     "ui.filter.capped": "показаны 3 из {n} панелей",
     "ui.filter.noFrames": "нет кадров в окне {window}",
+    "ui.do.ok": (
+        "Все выбранные панели в норме; сохраняйте текущий темп съёмки и пороги."
+    ),
     "ui.fresh.fresh": "свежо",
     "ui.fresh.warn": "стареет",
     "ui.fresh.stale": "устарело",
@@ -866,6 +873,66 @@ ACTIONS: dict[str, str] = {
         "can separate rig changes."
     ),
 }
+
+ACTIONS_RU: dict[str, str] = {
+    "growth-stall": (
+        "Сравните три подряд дневные медианы, прежде чем называть это застоем; "
+        "один ровный день — шум."
+    ),
+    "area-drop": (
+        "Откройте очередь проверки масок за окно падения и проверьте кадрирование, "
+        "прежде чем трогать пороги."
+    ),
+    "solidity-drop": (
+        "Проверьте кадры на слившуюся или выходящую за границы маску, затем "
+        "перезапустите сегментацию."
+    ),
+    "scale-coverage": (
+        "Перепроверьте маркер 45 мм на кадрах и откалибруйте стенд."
+    ),
+    "capture-gap": (
+        "Сопоставьте простой с журналом съёмки и перезапустите очередь, если "
+        "записи о нём нет."
+    ),
+    "stale-data": (
+        "Переснимите панель или отправьте её в архив, прежде чем сравнивать площади."
+    ),
+    "quality-flag-rate": (
+        "Пересоберите серию с физическими флагами качества и не цитируйте долю "
+        "дефектов до этого."
+    ),
+    "camera-settings-change": (
+        "Задокументируйте изменение настроек камеры и разделите серию на этой "
+        "метке времени."
+    ),
+    "camera-settings-provenance": (
+        "Записывайте выдержку, баланс белого и усиление в sidecar, чтобы конвейер "
+        "мог отделять изменения стенда."
+    ),
+}
+
+# Cards whose charts and copy follow the crop filter; other cards stay
+# aggregate by design (their filter scope is ``all-panels``/``hide``).
+FRAGMENT_CARDS: frozenset[str] = frozenset(
+    {
+        "ch-gr-area-px",
+        "ch-gr-area-cm2",
+        "ch-gr-rate-bars",
+        "ch-gr-daily-bars",
+        "ch-gr-daily-table",
+    }
+)
+
+# Conclusions that decompose into one sentence per panel (line/bar cards); the
+# daily table keeps its own template with per-panel totals.
+PER_PANEL_CONCLUSION: frozenset[str] = frozenset(
+    {
+        "ch-gr-area-px",
+        "ch-gr-area-cm2",
+        "ch-gr-rate-bars",
+        "ch-gr-daily-bars",
+    }
+)
 
 
 def _field(
@@ -1538,12 +1605,16 @@ def _card_thresholds(card_id: str) -> list[dict[str, str]]:
                 "label_en": f"warn age {config.stale_warn_days:g} d",
                 "label_ru": f"предупреждение {config.stale_warn_days:g} д",
                 "value": f"{config.stale_warn_days:g} d",
+                "at": config.stale_warn_days,
+                "unit": "d",
                 "kind": "warn",
             },
             {
                 "label_en": f"critical age {config.stale_critical_days:g} d",
                 "label_ru": f"критично {config.stale_critical_days:g} д",
                 "value": f"{config.stale_critical_days:g} d",
+                "at": config.stale_critical_days,
+                "unit": "d",
                 "kind": "critical",
             },
         ]
@@ -1553,12 +1624,16 @@ def _card_thresholds(card_id: str) -> list[dict[str, str]]:
                 "label_en": f"area-drop warn {config.area_drop_warn_pct:g} %",
                 "label_ru": f"area-drop предупреждение {config.area_drop_warn_pct:g} %",
                 "value": f"{config.area_drop_warn_pct:g} %",
+                "at": config.area_drop_warn_pct,
+                "unit": "%",
                 "kind": "warn",
             },
             {
                 "label_en": f"area-drop critical {config.area_drop_critical_pct:g} %",
                 "label_ru": f"area-drop критично {config.area_drop_critical_pct:g} %",
                 "value": f"{config.area_drop_critical_pct:g} %",
+                "at": config.area_drop_critical_pct,
+                "unit": "%",
                 "kind": "critical",
             },
         ]
@@ -1568,10 +1643,117 @@ def _card_thresholds(card_id: str) -> list[dict[str, str]]:
                 "label_en": f"growth-stall {config.growth_stall_min_pct:g} %",
                 "label_ru": f"growth-stall {config.growth_stall_min_pct:g} %",
                 "value": f"{config.growth_stall_min_pct:g} %",
+                "at": config.growth_stall_min_pct,
+                "unit": "%",
                 "kind": "warn",
             }
         ]
     return []
+
+
+def _sub_payload(
+    payload: dict[str, object], panel: dict[str, object]
+) -> dict[str, object]:
+    """Project a payload onto one panel for per-panel fragment formatting."""
+    out = dict(payload)
+    out["panels"] = [panel]
+    out["findings"] = [
+        finding
+        for finding in _findings(payload)
+        if finding.get("panel") == panel.get("id")
+    ]
+    totals = dict(payload.get("totals") or {})
+    totals["days"] = int(panel.get("days", totals.get("days", 0)) or 0)
+    out["totals"] = totals
+    return out
+
+
+def _fragment(
+    card_id: str,
+    payload: dict[str, object],
+    panel: dict[str, object],
+    field: str,
+    lang: str,
+) -> str:
+    """Formatted per-panel ``now``/``conclusion`` fragment for one card."""
+    sub = _sub_payload(payload, panel)
+    if field == "conclusion" and card_id in PER_PANEL_CONCLUSION:
+        return str(_values(card_id, sub, lang).get("per_panel") or "")
+    if field == "conclusion":
+        return conclusion(card_id, sub, lang)
+    return _now_text(card_id, sub, lang)
+
+
+def _panel_fragments(
+    card_id: str, payload: dict[str, object], field: str
+) -> dict[str, dict[str, str]]:
+    """Per-panel fragments keyed by panel id, already formatted per language."""
+    parts: dict[str, dict[str, str]] = {}
+    for panel in _panels(payload):
+        panel_id = str(panel.get("id", ""))
+        if not panel_id:
+            continue
+        parts[panel_id] = {
+            lang: _fragment(card_id, payload, panel, field, lang)
+            for lang in ("en", "ru")
+        }
+    return parts
+
+
+def _do_actions(payload: dict[str, object]) -> dict[str, dict[str, str]]:
+    """Critical action per panel, keyed by panel id (first critical rule wins)."""
+    actions: dict[str, dict[str, str]] = {}
+    for finding in _findings(payload):
+        if finding.get("severity") != "critical":
+            continue
+        panel_id = str(finding.get("panel", ""))
+        if not panel_id or panel_id in actions:
+            continue
+        rule = str(finding.get("rule_id", ""))
+        actions[panel_id] = {
+            "en": ACTIONS.get(rule, ""),
+            "ru": ACTIONS_RU.get(rule, ""),
+        }
+    return actions
+
+
+def join_fragments(
+    card: dict[str, object],
+    field: str,
+    selected: Sequence[str],
+    lang: str = "en",
+) -> str:
+    """Join selected panel fragments with ``; `` using the card join template.
+
+    Args:
+        card: One payload card record.
+        field: ``now`` or ``conclusion``.
+        selected: Panel ids in config order.
+        lang: ``en`` or ``ru``.
+
+    Returns:
+        The rendered sentence. With every panel selected the precomputed
+        aggregate sentence is returned unchanged, so the all-crops output stays
+        byte-identical to the pre-filter renderer.
+    """
+    parts_map = card.get(f"{field}_parts")
+    if not isinstance(parts_map, dict):
+        return str(card.get(f"{field}_{lang}", ""))
+    if len(selected) == len(parts_map):
+        return str(card.get(f"{field}_{lang}", ""))
+    parts = [
+        str((parts_map.get(panel_id) or {}).get(lang, ""))
+        for panel_id in selected
+        if isinstance(parts_map.get(panel_id), dict)
+    ]
+    parts = [part for part in parts if part]
+    template_map = card.get(f"{field}_join")
+    template = (
+        str(template_map.get(lang, "{parts}"))
+        if isinstance(template_map, dict)
+        else "{parts}"
+    )
+    return template.replace("{parts}", "; ".join(parts))
 
 
 def cards_for_payload(payload: dict[str, object]) -> list[dict[str, object]]:
@@ -1584,6 +1766,7 @@ def cards_for_payload(payload: dict[str, object]) -> list[dict[str, object]]:
         One dict per registry card, in registry order.
     """
     records: list[dict[str, object]] = []
+    do_actions = _do_actions(payload)
     for card in CARDS:
         values_en = _values(card.id, payload, "en")
         values_ru = _values(card.id, payload, "ru")
@@ -1640,14 +1823,35 @@ def cards_for_payload(payload: dict[str, object]) -> list[dict[str, object]]:
                 "how_ru": TEXTS["ru"][f"{card.id}.how"],
                 "now_en": _fill(TEXTS["en"][f"{card.id}.now"], values_en),
                 "now_ru": _fill(TEXTS["ru"][f"{card.id}.now"], values_ru),
+                "now_parts": (
+                    _panel_fragments(card.id, payload, "now")
+                    if card.id in FRAGMENT_CARDS
+                    else {}
+                ),
+                "now_join": {"en": "{parts}", "ru": "{parts}"},
                 "do_en": TEXTS["en"][f"{card.id}.do"],
                 "do_ru": TEXTS["ru"][f"{card.id}.do"],
+                "do_ok": (
+                    {
+                        "en": TEXTS["en"]["ui.do.ok"],
+                        "ru": TEXTS["ru"]["ui.do.ok"],
+                    }
+                    if card.id in FRAGMENT_CARDS
+                    else {}
+                ),
+                "do_actions": do_actions if card.id in FRAGMENT_CARDS else {},
                 "conclusion_en": _fill(
                     TEXTS["en"][f"{card.id}.conclusion"], values_en
                 ),
                 "conclusion_ru": _fill(
                     TEXTS["ru"][f"{card.id}.conclusion"], values_ru
                 ),
+                "conclusion_parts": (
+                    _panel_fragments(card.id, payload, "conclusion")
+                    if card.id in FRAGMENT_CARDS
+                    else {}
+                ),
+                "conclusion_join": {"en": "{parts}", "ru": "{parts}"},
                 "stats": _card_stats(card.id, payload),
                 "axes": _card_axes(card.id),
                 "thresholds": _card_thresholds(card.id),

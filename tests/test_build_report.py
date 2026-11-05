@@ -141,6 +141,8 @@ def test_cli_now_flag_sets_generated_at(tmp_path: Path, capsys) -> None:
     payload = json.loads(dump.read_text(encoding="utf-8"))
     assert payload["now_source"] == "cli"
     assert payload["generated_at"] is not None
+    assert payload["generated_at"].endswith("Z")
+    assert payload["now"].endswith("Z")
     assert "generated" in out.read_text(encoding="utf-8")
 
 

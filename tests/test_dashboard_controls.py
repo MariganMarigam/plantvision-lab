@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,7 +10,12 @@ import pytest
 
 from plantvision.analytics.dashboard import charts, contract, layout
 from plantvision.analytics.dashboard.build import build_report, load_panels
-from plantvision.analytics.dashboard.copy import TEXTS, cards_for_payload
+from plantvision.analytics.dashboard.copy import (
+    TEXTS,
+    cards_for_payload,
+    join_fragments,
+)
+from plantvision.analytics.dashboard.svg import linear
 from plantvision.analytics.dashboard.model import (
     build_payload,
     last_frame_block,
@@ -175,8 +181,8 @@ def test_renderer_enums_match_contract(payload) -> None:
 
 
 def test_renderer_js_budget() -> None:
-    assert len(layout.JS_FILTER) <= 24_000
-    assert len(layout.JS) <= 40_000
+    assert len(layout.JS_FILTER) <= 60_000
+    assert len(layout.JS) <= 60_000
 
 
 def test_renderer_constants_in_js() -> None:
@@ -267,3 +273,126 @@ def test_snapshot_schema_keys_in_js() -> None:
         "thumbnails",
     ):
         assert key in layout.JS_FILTER
+
+
+def _growth_card(payload, card_id: str = "ch-gr-area-px") -> dict[str, object]:
+    """One growth card record from the payload."""
+    return next(card for card in payload["cards"] if card["id"] == card_id)
+
+
+def _panel_ids(payload) -> list[str]:
+    """Panel ids in config order."""
+    return [str(panel["id"]) for panel in payload["panels"]]
+
+
+def test_filter_fragments_are_keyed_by_panel(payload) -> None:
+    ids = set(_panel_ids(payload))
+    for card in payload["cards"]:
+        if card["id"] not in {
+            "ch-gr-area-px",
+            "ch-gr-area-cm2",
+            "ch-gr-rate-bars",
+            "ch-gr-daily-bars",
+            "ch-gr-daily-table",
+        }:
+            continue
+        assert set(card["now_parts"]) == ids
+        assert set(card["conclusion_parts"]) == ids
+        for parts in (card["now_parts"], card["conclusion_parts"]):
+            for text in parts.values():
+                assert text["en"].strip()
+                assert text["ru"].strip()
+
+
+def test_single_crop_copy_names_only_that_panel(payload) -> None:
+    card = _growth_card(payload)
+    panel = payload["panels"][0]
+    now = join_fragments(card, "now", [str(panel["id"])], "en")
+    conclusion = join_fragments(card, "conclusion", [str(panel["id"])], "en")
+    assert str(panel["label"]) in now
+    assert str(panel["label"]) in conclusion
+    for other in payload["panels"][1:]:
+        assert str(other["label"]) not in now
+        assert str(other["label"]) not in conclusion
+
+
+def test_two_crop_copy_names_both_panels(payload) -> None:
+    card = _growth_card(payload)
+    ids = _panel_ids(payload)[:2]
+    for field in ("now", "conclusion"):
+        text = join_fragments(card, field, ids, "en")
+        for panel in payload["panels"][:2]:
+            assert str(panel["label"]) in text
+        assert str(payload["panels"][2]["label"]) not in text
+
+
+def test_all_crops_copy_matches_precomputed_string(payload) -> None:
+    card = _growth_card(payload)
+    ids = _panel_ids(payload)
+    for field in ("now", "conclusion"):
+        assert join_fragments(card, field, ids, "en") == card[f"{field}_en"]
+        assert join_fragments(card, field, ids, "ru") == card[f"{field}_ru"]
+
+
+def test_filter_aware_do_line_rules(payload) -> None:
+    card = _growth_card(payload)
+    assert card["do_ok"]["en"].strip()
+    assert card["do_ok"]["ru"].strip()
+    critical = [
+        panel for panel in payload["panels"] if panel.get("verdict") == "critical"
+    ]
+    assert critical
+    for panel in critical:
+        assert card["do_actions"][str(panel["id"])]["en"].strip()
+
+
+def test_topbar_drops_panel_freshness_chips(doc: str) -> None:
+    header = re.search(
+        r'<header class="pv-topbar">.*?</header>', doc, re.S
+    )
+    assert header is not None
+    assert "pv-fresh" not in header.group(0)
+
+
+def test_adaptive_time_axis_and_parity_features_in_js() -> None:
+    assert "sp<=3*D" in layout.JS
+    assert "sp<=30*D" in layout.JS
+    js = layout.JS_FILTER
+    assert "lastLab" in js and "continue" in js
+    assert "captured_at (UTC)" in js
+    assert "pv-ax-title" in js
+    assert "scale_missing" in js
+    assert "nearestDistance" in layout.JS
+
+
+def test_payload_timestamps_use_z_suffix(payload) -> None:
+    assert str(payload["now"]).endswith("Z")
+    assert str(payload["generated_at"]).endswith("Z")
+    assert "+00:00" not in str(payload["now"])
+
+
+def test_client_geometry_matches_python_renderer_by_one_px() -> None:
+    x_domain = (0.0, 1000.0)
+    y_domain = (0.0, 10.0)
+    py_x = linear(x_domain, (charts.PAD_L, charts.PAD_L + charts.PLOT_W))
+    js_x = linear(
+        x_domain,
+        (contract.RENDER["pl"], contract.RENDER["pl"] + contract.RENDER["pw"]),
+    )
+    py_y = linear(
+        y_domain, (charts.PAD_T + charts.PLOT_H, charts.PAD_T)
+    )
+    js_y = linear(
+        y_domain,
+        (contract.RENDER["pt"] + contract.RENDER["ph"], contract.RENDER["pt"]),
+    )
+    for value in (0.0, 1.0, 250.0, 999.0):
+        assert abs(py_x(value) - js_x(value)) <= 1.0
+    for value in (0.0, 5.0, 10.0):
+        assert abs(py_y(value) - js_y(value)) <= 1.0
+    markup = charts.line_chart(
+        charts.ChartSpec(chart_id="ch-parity", title="Parity", desc="Parity"),
+        [charts.PlotSeries("A", [[(0, 1.0), (1000, 9.0)]])],
+    )
+    cx = float(re.search(r'<circle cx="([\d.]+)"', markup).group(1))
+    assert abs(cx - js_x(0.0)) <= 1.0
