@@ -30,7 +30,7 @@ from .charts import (
     ring,
     strips,
 )
-from .copy import TEXTS, cards_for_payload
+from .copy import PER_PANEL_CONCLUSION, TEXTS, cards_for_payload
 from .legacy import load_rows
 from .model import build_payload, resolve_now
 from .svg import esc
@@ -538,6 +538,11 @@ def build_report(
     )
     payload["frames"] = records
     payload["cards"] = cards_for_payload(payload)
+    for card in payload["cards"]:
+        if str(card.get("id")) in PER_PANEL_CONCLUSION:
+            # Full single-panel sentences stay server-side; the client formats
+            # the same summary from the compact ``single_values`` block.
+            card.pop("conclusion_parts", None)
     known_cards = {str(card["id"]) for card in payload["cards"]}
     for finding in payload["findings"]:
         if finding.get("anchor") not in known_cards:

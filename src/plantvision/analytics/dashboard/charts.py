@@ -1,7 +1,7 @@
 """Twelve pure-string SVG chart primitives (no data loading, no HTML shell).
 
-Geometry is fixed by the v2 plan: 720x240 cartesian plots with a 52/18/18/40
-padding box, 650x182 plot rect, unsmoothed polylines split at capture gaps and
+Geometry is fixed by the v2 plan: 720x240 cartesian plots with a 44/18/18/40
+padding box, 658x182 plot rect, unsmoothed polylines split at capture gaps and
 gradient/hatch definitions repeated in every cartesian chart so a cloned SVG
 in the drawer never references a missing id.
 """
@@ -28,9 +28,10 @@ from .svg import (
     text,
 )
 
-PAD_L, PAD_R, PAD_T, PAD_B = 52, 18, 18, 40
-PLOT_W = 650
+PAD_L, PAD_R, PAD_T, PAD_B = 44, 18, 18, 40
+PLOT_W = 658
 PLOT_H = 182
+Y_LABEL_X = PAD_L - 6
 X_LABEL_Y = PAD_T + PLOT_H + 26
 X_TITLE_Y = PAD_T + PLOT_H + 38
 LEGEND_Y = PAD_T + PLOT_H + 58
@@ -244,7 +245,6 @@ def _time_label(timestamp_ms: float, *, hours_span: float) -> str:
 
 
 def _axes(
-    spec: ChartSpec,
     *,
     x_lo: float,
     x_hi: float,
@@ -265,7 +265,7 @@ def _axes(
             f'y2="{num(y)}" stroke="var(--pv-grid)" stroke-width="1"/>'
         )
         parts.append(
-            f'<text x="46" y="{num(y)}" class="pv-ax" text-anchor="end" '
+            f'<text x="{Y_LABEL_X}" y="{num(y)}" class="pv-ax" text-anchor="end" '
             f'dominant-baseline="middle">{esc(num(tick, tick_decimals))}</text>'
         )
     hours_span = (x_hi - x_lo) / 3_600_000.0
@@ -285,12 +285,6 @@ def _axes(
             )
     parts.append(
         text(PAD_L + PLOT_W / 2, X_TITLE_Y, "captured_at (UTC)", anchor="middle")
-    )
-    unit = spec.unit or "value"
-    parts.append(
-        f'<text x="12" y="{num(PAD_T + PLOT_H / 2)}" class="pv-ax" '
-        f'text-anchor="middle" transform="rotate(-90 12 {num(PAD_T + PLOT_H / 2)})">'
-        f"{esc(unit)}</text>"
     )
     return "".join(parts)
 
@@ -379,7 +373,7 @@ def line_chart(
             desc=spec.desc,
         ),
         _defs(),
-        _axes(spec, x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi, width=width),
+        _axes(x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi, width=width),
     ]
     parts.extend(_band_rect(band, y_scale, y_lo, y_hi) for band in bands)
     parts.extend(
@@ -477,7 +471,7 @@ def area_chart(
     parts = [
         chart_open(width, height, chart_id=spec.chart_id, title=spec.title, desc=spec.desc),
         _defs(),
-        _axes(spec, x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi, width=width),
+        _axes(x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi, width=width),
     ]
     baseline = y_scale(0.0)
     for run in runs:

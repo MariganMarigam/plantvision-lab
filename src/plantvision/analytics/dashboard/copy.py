@@ -44,6 +44,11 @@ _UI_EN: dict[str, str] = {
     "ui.explain.now": "Current reading",
     "ui.explain.do": "What to do",
     "ui.explain.plain": "Plain-language reading",
+    "ui.thr.caption": "Thresholds: {list}",
+    "ui.conclusion.single": (
+        "{panel} changed {delta} over {span} of capture, from {first} to "
+        "{last} {unit}."
+    ),
     "ui.drawer.axes": "Axes",
     "ui.drawer.thresholds": "Thresholds",
     "ui.drawer.stats": "Stats",
@@ -177,6 +182,11 @@ _UI_RU: dict[str, str] = {
     "ui.explain.now": "Текущее значение",
     "ui.explain.do": "Что делать",
     "ui.explain.plain": "Простое объяснение",
+    "ui.thr.caption": "Пороги: {list}",
+    "ui.conclusion.single": (
+        "{panel}: значение изменилось на {delta} за {span} съёмки — с {first} "
+        "до {last} {unit}."
+    ),
     "ui.drawer.axes": "Оси",
     "ui.drawer.thresholds": "Пороги",
     "ui.drawer.stats": "Статистика",
@@ -1668,6 +1678,151 @@ def _sub_payload(
     return out
 
 
+def _span_text(hours: object, lang: str) -> str | None:
+    """Human capture span, in days once it passes two full days."""
+    if hours is None:
+        return None
+    try:
+        value = float(hours)
+    except (TypeError, ValueError):
+        return None
+    if value < 0:
+        return None
+    if value >= 48.0:
+        unit = "days" if lang == "en" else "дн."
+        return f"{value / 24.0:.1f} {unit}"
+    unit = "h" if lang == "en" else "ч"
+    return f"{value:.1f} {unit}"
+
+
+def _single_record(
+    card_id: str, payload: dict[str, object]
+) -> dict[str, object] | None:
+    """Compact one-panel summary values, or ``None`` when unavailable."""
+    panels = _panels(payload)
+    if len(panels) != 1:
+        return None
+    panel = panels[0]
+    span_hours = panel.get("span_hours")
+    if span_hours is None:
+        return None
+    try:
+        span_value = float(span_hours)
+    except (TypeError, ValueError):
+        return None
+    if span_value < 0:
+        return None
+    unit = ""
+    first_text = last_text = ""
+    delta: str | None = None
+    if card_id == "ch-gr-area-px":
+        stats = _series_stats(panel, "area_px")
+        if not stats:
+            return None
+        first, last = stats["first"], stats["last"]
+        unit = "px"
+        delta = f"{(last - first) / first * 100.0:+.1f} %" if first > 0 else None
+        first_text, last_text = f"{first:,.0f}", f"{last:,.0f}"
+    elif card_id == "ch-gr-area-cm2":
+        block = _series(panel, "area_cm2")
+        stats = block.get("stats")
+        if int(block.get("measured", 0) or 0) <= 0 or not isinstance(stats, dict):
+            return None
+        first, last = float(stats["first"]), float(stats["last"])
+        unit = "cm²"
+        delta = f"{(last - first) / first * 100.0:+.1f} %" if first > 0 else None
+        first_text, last_text = f"{first:,.2f}", f"{last:,.2f}"
+    elif card_id == "ch-gr-rate-bars":
+        steps, base_unit = _daily_steps(panel)
+        if not steps:
+            return None
+        first, last = steps[0][0], steps[-1][0]
+        unit = f"{base_unit}/day"
+        delta = f"{last - first:+.2f} {unit}"
+        first_text, last_text = f"{first:+.2f}", f"{last:+.2f}"
+    elif card_id == "ch-gr-daily-bars":
+        daily = panel.get("daily") if isinstance(panel.get("daily"), list) else []
+        medians = [
+            float(bucket["median_area_px"])
+            for bucket in daily
+            if bucket.get("median_area_px") is not None
+        ]
+        if not medians:
+            return None
+        first, last = medians[0], medians[-1]
+        unit = "px"
+        delta = f"{(last - first) / first * 100.0:+.1f} %" if first > 0 else None
+        first_text, last_text = f"{first:,.0f}", f"{last:,.0f}"
+    else:
+        return None
+    if delta is None:
+        return None
+    return {
+        "first": first_text,
+        "last": last_text,
+        "delta": delta,
+        "span_hours": span_value,
+        "unit": unit,
+    }
+
+
+def _single_conclusion(
+    card_id: str, payload: dict[str, object], lang: str
+) -> str | None:
+    """Distinct one-panel conclusion for a single-crop selection."""
+    panels = _panels(payload)
+    if len(panels) != 1:
+        return None
+    label = str(panels[0].get("label", ""))
+    record = _single_record(card_id, payload)
+    if not label or record is None:
+        return None
+    span = _span_text(record["span_hours"], lang)
+    if span is None:
+        return None
+    return _fill(
+        TEXTS[lang]["ui.conclusion.single"],
+        {
+            "panel": label,
+            "delta": str(record["delta"]),
+            "span": span,
+            "first": str(record["first"]),
+            "last": str(record["last"]),
+            "unit": str(record["unit"]),
+        },
+    )
+
+
+def _single_fragments(
+    card_id: str, payload: dict[str, object]
+) -> dict[str, dict[str, str]]:
+    """One-panel conclusion summaries keyed by panel id, per language."""
+    out: dict[str, dict[str, str]] = {}
+    for panel in _panels(payload):
+        panel_id = str(panel.get("id", ""))
+        if not panel_id:
+            continue
+        out[panel_id] = {}
+        for lang in ("en", "ru"):
+            text = _single_conclusion(card_id, _sub_payload(payload, panel), lang)
+            out[panel_id][lang] = text if text is not None else _chip(
+                "not-computable", lang
+            )
+    return out
+
+
+def _single_values(card_id: str, payload: dict[str, object]) -> dict[str, object]:
+    """Compact per-panel summary values for the client renderer."""
+    out: dict[str, object] = {}
+    for panel in _panels(payload):
+        panel_id = str(panel.get("id", ""))
+        if panel_id:
+            out[panel_id] = _single_record(
+                card_id, _sub_payload(payload, panel)
+            )
+    return out
+
+
 def _fragment(
     card_id: str,
     payload: dict[str, object],
@@ -1732,11 +1887,13 @@ def join_fragments(
         lang: ``en`` or ``ru``.
 
     Returns:
-        The rendered sentence. With every panel selected the precomputed
-        aggregate sentence is returned unchanged, so the all-crops output stays
-        byte-identical to the pre-filter renderer.
+        The rendered sentence. A single selected panel gets the compact
+        one-panel summary; two or more panels use the precomputed aggregate
+        sentence. The ``now`` field keeps its per-panel value lines.
     """
     parts_map = card.get(f"{field}_parts")
+    if field == "conclusion" and len(selected) >= 2:
+        return str(card.get(f"{field}_{lang}", ""))
     if not isinstance(parts_map, dict):
         return str(card.get(f"{field}_{lang}", ""))
     if len(selected) == len(parts_map):
@@ -1847,8 +2004,15 @@ def cards_for_payload(payload: dict[str, object]) -> list[dict[str, object]]:
                     TEXTS["ru"][f"{card.id}.conclusion"], values_ru
                 ),
                 "conclusion_parts": (
-                    _panel_fragments(card.id, payload, "conclusion")
+                    _single_fragments(card.id, payload)
+                    if card.id in PER_PANEL_CONCLUSION
+                    else _panel_fragments(card.id, payload, "conclusion")
                     if card.id in FRAGMENT_CARDS
+                    else {}
+                ),
+                "single_values": (
+                    _single_values(card.id, payload)
+                    if card.id in PER_PANEL_CONCLUSION
                     else {}
                 ),
                 "conclusion_join": {"en": "{parts}", "ru": "{parts}"},

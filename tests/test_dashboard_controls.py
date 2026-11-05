@@ -316,14 +316,31 @@ def test_single_crop_copy_names_only_that_panel(payload) -> None:
         assert str(other["label"]) not in conclusion
 
 
+def test_single_crop_conclusion_differs_from_now(payload) -> None:
+    """P1: a one-crop conclusion is a summary, not a repeat of ``now``."""
+    for card in payload["cards"]:
+        if not card["now_parts"]:
+            continue
+        for panel in payload["panels"]:
+            panel_id = str(panel["id"])
+            for lang in ("en", "ru"):
+                now = join_fragments(card, "now", [panel_id], lang)
+                conclusion = join_fragments(card, "conclusion", [panel_id], lang)
+                assert now != conclusion, (card["id"], panel_id, lang)
+
+
 def test_two_crop_copy_names_both_panels(payload) -> None:
     card = _growth_card(payload)
     ids = _panel_ids(payload)[:2]
-    for field in ("now", "conclusion"):
-        text = join_fragments(card, field, ids, "en")
-        for panel in payload["panels"][:2]:
-            assert str(panel["label"]) in text
-        assert str(payload["panels"][2]["label"]) not in text
+    now = join_fragments(card, "now", ids, "en")
+    for panel in payload["panels"][:2]:
+        assert str(panel["label"]) in now
+    assert str(payload["panels"][2]["label"]) not in now
+    for lang in ("en", "ru"):
+        assert (
+            join_fragments(card, "conclusion", ids, lang)
+            == card[f"conclusion_{lang}"]
+        )
 
 
 def test_all_crops_copy_matches_precomputed_string(payload) -> None:

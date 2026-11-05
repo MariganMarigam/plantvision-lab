@@ -76,7 +76,7 @@ def test_line_draws_threshold_band() -> None:
     ]
     assert len(rects) == 1
     assert float(rects[0]["height"]) > 0.0
-    assert float(rects[0]["width"]) == 650.0
+    assert float(rects[0]["width"]) == 658.0
 
 
 def test_line_marks_missing_scale_points() -> None:
@@ -93,7 +93,7 @@ def test_y_ticks_drop_decimals_when_axis_max_is_ten_or_more() -> None:
         chart_id="ch-cm2", title="Area", desc="cm2", unit="cm²", decimals=2
     )
     markup = line_chart(spec, [PlotSeries("A", [[(0, 120.0), (1000, 240.0)]])])
-    ticks = re.findall(r'<text x="46"[^>]*>([^<]*)</text>', markup)
+    ticks = re.findall(r'<text x="38"[^>]*>([^<]*)</text>', markup)
     assert ticks
     assert all("." not in tick for tick in ticks)
 
@@ -101,7 +101,7 @@ def test_y_ticks_drop_decimals_when_axis_max_is_ten_or_more() -> None:
 def test_y_ticks_keep_two_decimals_below_ten() -> None:
     spec = ChartSpec(chart_id="ch-ratio", title="Ratio", desc="ratio", decimals=3)
     markup = line_chart(spec, [PlotSeries("A", [[(0, 0.1), (1000, 0.9)]])])
-    ticks = re.findall(r'<text x="46"[^>]*>([^<]*)</text>', markup)
+    ticks = re.findall(r'<text x="38"[^>]*>([^<]*)</text>', markup)
     assert ticks
     assert all(re.fullmatch(r"\d+\.\d{2}", tick) for tick in ticks)
 
@@ -169,7 +169,7 @@ def test_bar_width_and_gap_geometry() -> None:
     xs = [float(attrs["x"]) for attrs in bars]
     assert abs(widths[0] - 28.0) < 0.01
     assert abs(xs[1] - xs[0] - 40.0) < 0.01
-    assert abs(xs[0] - 52.0) < 0.01
+    assert abs(xs[0] - 44.0) < 0.01
 
 
 def test_stacked_columns_measured_fraction() -> None:
