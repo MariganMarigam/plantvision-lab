@@ -139,6 +139,8 @@ def _svg_for(
     payload: dict[str, object],
     frames: dict[str, str],
     lang: str = "en",
+    *,
+    static_growth: bool = True,
 ) -> dict[str, str]:
     """Render the SVG map for every chart card in the payload.
 
@@ -146,6 +148,7 @@ def _svg_for(
         payload: Page payload with ``cards`` filled.
         frames: Frame asset map (unused by gate-1 cards).
         lang: Initial language for the few labelled chart fragments.
+        static_growth: Keep the Python-rendered Growth fallback charts.
 
     Returns:
         ``card_id -> markup``; table/board cards are absent.
@@ -159,7 +162,37 @@ def _svg_for(
         kind = str(card.get("chart", ""))
         title = str(card.get("title_en", ""))
         desc = f"{card.get('what_en', '')} {card.get('now_en', '')}".strip()
+        if card_id.startswith("ch-gr-") and not static_growth:
+            continue
         if kind in {"table", "board", "image"}:
+            continue
+        if card_id == "ch-ov-last-change":
+            plot_series = [
+                PlotSeries(
+                    _SLOTS[index % 3],
+                    [
+                        [
+                            (int(pair[0]), float(pair[1]))
+                            for pair in panel.get("last_change", [])
+                        ]
+                    ]
+                    if panel.get("last_change")
+                    else [],
+                    label=str(panel.get("label", "")),
+                )
+                for index, panel in enumerate(panels)
+                if panel.get("last_change")
+            ]
+            svgs[card_id] = line_chart(
+                ChartSpec(card_id, title, desc, unit="index", decimals=1),
+                plot_series,
+                thresholds=(
+                    Threshold(102.0, "+2 %", "warn"),
+                    Threshold(98.0, "−2 %", "critical"),
+                ),
+                width=720,
+                height=240,
+            )
             continue
         if kind == "line":
             key = "area_cm2" if card_id == "ch-gr-area-cm2" else "area_px"
@@ -458,6 +491,8 @@ def build_report(
     max_bytes: int = 1_048_576,
     config: RuleConfig | None = None,
     lang: str = "en",
+    static_growth: bool = True,
+    max_json_bytes: int = 240_000,
 ) -> ReportResult:
     """Build the page and write it atomically after the byte gate.
 
@@ -472,13 +507,15 @@ def build_report(
         max_bytes: Hard page-size budget.
         config: Optional rule thresholds.
         lang: Initial language (``en``/``ru``).
+        static_growth: Keep the Python-rendered Growth fallback charts.
+        max_json_bytes: Hard payload JSON budget.
 
     Returns:
         The build summary.
 
     Raises:
-        ValueError: For no panels, duplicate ids, a bad language, or a page
-            above ``max_bytes``.
+        ValueError: For no panels, duplicate ids, a bad language, or a payload
+            or page above budget.
         FileNotFoundError: For a missing CSV.
         OSError: If the destination cannot be written.
     """
@@ -505,7 +542,7 @@ def build_report(
     for finding in payload["findings"]:
         if finding.get("anchor") not in known_cards:
             finding["anchor"] = ""
-    svgs = _svg_for(payload, assets, lang)
+    svgs = _svg_for(payload, assets, lang, static_growth=static_growth)
     document = layout.render_page(
         payload, svgs, frames=assets, js=layout.JS, lang=lang
     )
@@ -515,6 +552,8 @@ def build_report(
             payload, separators=(",", ":"), ensure_ascii=False, sort_keys=True
         ).encode("utf-8")
     )
+    if json_bytes > max_json_bytes:
+        raise ValueError(f"payload {json_bytes} bytes exceeds budget {max_json_bytes}")
     if size > max_bytes:
         raise ValueError(f"output {size} bytes exceeds budget {max_bytes}")
     destination = Path(out_path)

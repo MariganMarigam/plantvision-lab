@@ -62,6 +62,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--no-frames", action="store_true", help="skip embedded thumbnails",
     )
     parser.add_argument(
+        "--static-growth",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="keep the Python-rendered Growth fallback charts",
+    )
+    parser.add_argument(
         "--max-bytes", type=int, default=1_048_576,
         help="hard page-size budget in bytes",
     )
@@ -109,6 +115,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             include_frames=not args.no_frames,
             max_bytes=args.max_bytes,
             lang=args.lang,
+            static_growth=args.static_growth,
         )
     except ValueError as exc:
         message = str(exc)
@@ -118,6 +125,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "status": "error",
                 "error": f"budget: {message}",
                 "bytes": int(size),
+            }, sort_keys=True))
+            return 3
+        if message.startswith("payload "):
+            print(json.dumps({
+                "status": "error",
+                "error": f"budget: {message}",
             }, sort_keys=True))
             return 3
         print(json.dumps({

@@ -24,6 +24,7 @@ from plantvision.analytics.rules import (
 )
 from plantvision.analytics.timeseries import TIMESERIES_COLUMNS
 
+from .contract import FILTERS, RENDER, crops_payload
 from .legacy import load_rows
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -269,6 +270,104 @@ def build_series(
         stats=stats([value for _timestamp, value in dated]),
         downsampled=kept_total < len(dated),
     )
+
+
+def _measured_pairs(
+    rows: Sequence[dict[str, str]], key: str
+) -> list[tuple[datetime, float]]:
+    """Dated, finite ``(timestamp, value)`` pairs sorted ascending."""
+    measured: list[tuple[datetime, float]] = []
+    for row in rows:
+        timestamp = parse_timestamp(row.get("captured_at"))
+        if timestamp is None:
+            continue
+        value = _finite(row, key)
+        if value is None:
+            continue
+        measured.append((timestamp, value))
+    measured.sort(key=lambda pair: pair[0])
+    return measured
+
+
+def _iso_z(moment: datetime) -> str:
+    """ISO-8601 UTC string with the trailing ``Z`` the page uses."""
+    return moment.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def points_table(
+    rows: Sequence[dict[str, str]],
+    keys: Sequence[str] = ("area_px", "area_cm2"),
+) -> dict[str, list[int | float | None]]:
+    """Columnar frame table: one shared timestamp list and one list per key.
+
+    Rows without a parseable ``captured_at`` are dropped. Blank or non-finite
+    cells become ``None`` (never ``0``). Values are rounded to 6 decimals.
+    """
+    out: dict[str, list[int | float | None]] = {
+        "ts": [],
+        **{key: [] for key in keys},
+    }
+    for row in rows:
+        timestamp = parse_timestamp(row.get("captured_at"))
+        if timestamp is None:
+            continue
+        out["ts"].append(int(timestamp.timestamp() * 1000.0))
+        for key in keys:
+            value = _finite(row, key)
+            out[key].append(None if value is None else round(value, 6))
+    return out
+
+
+def last_frame_block(
+    rows: Sequence[dict[str, str]], key: str = "area_px"
+) -> dict[str, object]:
+    """Last measured value, previous measured value, delta in value and percent."""
+    measured = _measured_pairs(rows, key)
+    if not measured:
+        return {
+            "at": "",
+            "value": None,
+            "prev": None,
+            "delta": None,
+            "delta_pct": None,
+        }
+    timestamp, last = measured[-1]
+    value = round(last, 6)
+    if len(measured) == 1:
+        return {
+            "at": _iso_z(timestamp),
+            "value": value,
+            "prev": None,
+            "delta": None,
+            "delta_pct": None,
+        }
+    previous = round(measured[-2][1], 6)
+    delta = round(value - previous, 6)
+    delta_pct = round(100.0 * delta / previous, 4) if previous != 0 else None
+    return {
+        "at": _iso_z(timestamp),
+        "value": value,
+        "prev": previous,
+        "delta": delta,
+        "delta_pct": delta_pct,
+    }
+
+
+def trailing_index_series(
+    rows: Sequence[dict[str, str]], *, key: str = "area_px", count: int = 24
+) -> list[list[float]]:
+    """Index (first kept frame = 100) over the trailing ``count`` measured frames."""
+    measured = _measured_pairs(rows, key)
+    if count <= 0 or not measured:
+        return []
+    tail = measured[-count:]
+    base = tail[0][1]
+    if base <= 0:
+        return []
+    return [
+        [int(timestamp.timestamp() * 1000.0), round(100.0 * value / base, 4)]
+        for timestamp, value in tail
+    ]
 
 
 def _dated_rows(rows: Sequence[dict[str, str]]) -> list[tuple[datetime, dict[str, str]]]:
@@ -654,6 +753,9 @@ def panel_payload(
         "gaps": gaps_block(rows),
         "shape": {"radar": radar, "range": ranges},
         "scale_missing": scale_missing,
+        "points": points_table(rows),
+        "last_frame": last_frame_block(rows),
+        "last_change": trailing_index_series(rows),
         "frames": [],
         "alerts": {
             "critical": sum(1 for finding in findings if finding.severity == "critical"),
@@ -952,6 +1054,9 @@ def build_payload(
         "now_source": now_source,
         "totals": totals,
         "panels": panels,
+        "renderer": dict(RENDER),
+        "filters": {name: list(values) for name, values in FILTERS.items()},
+        "crops": crops_payload(panels),
         "comparison": comparison_payload(panels),
         "calendar": calendar_payload(panels),
         "findings": findings_payload(panels, pairs, _ANCHORS),

@@ -18,10 +18,13 @@ from plantvision.analytics.dashboard.model import (
     comparison_payload,
     coverage_block,
     daily_buckets,
+    last_frame_block,
     panel_payload,
+    points_table,
     quality_block,
     split_runs,
     stats,
+    trailing_index_series,
 )
 from plantvision.analytics.timeseries import TIMESERIES_COLUMNS
 
@@ -223,3 +226,50 @@ def test_payload_is_deterministic_for_fixed_now(tmp_path: Path) -> None:
     assert dump(first) == dump(second)
     assert first["totals"]["panels"] == 3
     assert first["now_source"] == "cli"
+
+
+def test_panel_payload_exposes_points_table() -> None:
+    rows = _series_rows(3, start=datetime(2026, 10, 1, tzinfo=UTC))
+    payload = panel_payload(FakePanel(id="p", label="P"), rows, now=NOW)
+    table = payload["points"]
+    assert set(table) == {"ts", "area_px", "area_cm2"}
+    assert len(table["ts"]) == len(table["area_px"]) == len(table["area_cm2"]) == 3
+
+
+def test_panel_payload_keeps_missing_cm2_as_null() -> None:
+    rows = _series_rows(3, start=datetime(2026, 10, 1, tzinfo=UTC))
+    rows[1]["area_cm2"] = ""
+    table = panel_payload(FakePanel(id="p", label="P"), rows, now=NOW)["points"]
+    assert table["area_cm2"][1] is None
+    assert table["area_cm2"][0] == 12.5
+
+
+def test_panel_payload_last_frame_and_trailing_index() -> None:
+    rows = _series_rows(3, start=datetime(2026, 10, 1, tzinfo=UTC))
+    for index, value in enumerate((100, 150, 200)):
+        rows[index]["area_px"] = str(value)
+    payload = panel_payload(FakePanel(id="p", label="P"), rows, now=NOW)
+    block = payload["last_frame"]
+    assert block["value"] == 200.0
+    assert block["prev"] == 150.0
+    assert block["delta_pct"] == 33.3333
+    change = payload["last_change"]
+    assert change[0][1] == 100.0
+    assert change[-1][1] == 200.0
+
+
+def test_build_payload_crops_follow_config_order(tmp_path: Path) -> None:
+    panels = []
+    for index, crop in enumerate(("beta", "alpha", "alpha")):
+        path = tmp_path / f"store{index}.csv"
+        rows = _series_rows(4, start=datetime(2026, 10, 1 + index, tzinfo=UTC))
+        with path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=TIMESERIES_COLUMNS)
+            writer.writeheader()
+            writer.writerows(rows)
+        panels.append(
+            FakePanel(id=f"p{index}", label=f"P{index}", crop=crop, csv_path=path)
+        )
+    payload = build_payload(panels, now=NOW, title="T")
+    assert [crop["name"] for crop in payload["crops"]] == ["beta", "alpha"]
+    assert payload["crops"][1]["rows"] == 8

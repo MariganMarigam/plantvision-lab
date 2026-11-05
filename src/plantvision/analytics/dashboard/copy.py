@@ -101,6 +101,57 @@ _UI_EN: dict[str, str] = {
         "Deterministic rules over the CSV; thresholds in docs/DASHBOARD.md. "
         "No LLM, no database."
     ),
+    "ui.controls.crop": "crop",
+    "ui.controls.cropAll": "all crops",
+    "ui.controls.cropHint": "Select at least one crop",
+    "ui.controls.keepOne": "Keep at least one crop selected",
+    "ui.controls.window": "window",
+    "ui.controls.w24": "24 h",
+    "ui.controls.w7": "7 days",
+    "ui.controls.w30": "30 days",
+    "ui.controls.wAll": "all",
+    "ui.controls.agg": "aggregation",
+    "ui.controls.raw": "raw",
+    "ui.controls.hourly": "hourly",
+    "ui.controls.daily": "daily",
+    "ui.controls.mode": "mode",
+    "ui.controls.abs": "absolute",
+    "ui.controls.idx": "index (100)",
+    "ui.controls.delta": "delta %",
+    "ui.controls.reset": "reset",
+    "ui.controls.snapshot": "snapshot",
+    "ui.controls.naNoTime": "No time-series cards on this tab",
+    "ui.controls.naBarsOnly": "Bars only: mode does not apply",
+    "ui.filter.aggregate": "aggregate of all panels",
+    "ui.filter.emptyScope": "no panel selected",
+    "ui.filter.emptyWindow": "no frames in this window",
+    "ui.filter.invalid": "invalid filter: {token}",
+    "ui.filter.keepOne": "The last crop cannot be unchecked",
+    "ui.filter.hideNote": "Hidden panels leave the axis unchanged",
+    "ui.filter.capped": "showing 3 of {n} panels",
+    "ui.filter.noFrames": "no frames in {window}",
+    "ui.fresh.fresh": "fresh",
+    "ui.fresh.warn": "aging",
+    "ui.fresh.stale": "stale",
+    "ui.fresh.label": "age of the last frame",
+    "ui.snap.title": "Snapshot",
+    "ui.snap.export": "Export",
+    "ui.snap.diff": "Diff",
+    "ui.snap.download": "Download JSON",
+    "ui.snap.copy": "Copy JSON",
+    "ui.snap.badSchema": "Not a pv-snapshot/1 file",
+    "ui.snap.filtersDiffer": "Filters differ between A and B",
+    "ui.snap.onlyA": "only in A",
+    "ui.snap.onlyB": "only in B",
+    "ui.snap.unchanged": "unchanged",
+    "ui.snap.notComputable": "not computable",
+    "ui.snap.waiting": "Choose two snapshot files to compare",
+    "ui.snap.empty": "No metrics to compare",
+    "ui.snap.path": "path",
+    "ui.snap.delta": "Δ",
+    "ui.snap.saved": "Snapshot ready",
+    "ui.ov.lastchange": "Change since last frame",
+    "ui.ov.thumbs": "Last frames",
 }
 
 _UI_RU: dict[str, str] = {
@@ -179,6 +230,72 @@ _UI_RU: dict[str, str] = {
         "Детерминированные правила по CSV; пороги в docs/DASHBOARD.md. "
         "Без LLM и без базы данных."
     ),
+    "ui.controls.crop": "культура",
+    "ui.controls.cropAll": "все культуры",
+    "ui.controls.cropHint": "Выберите хотя бы одну культуру",
+    "ui.controls.keepOne": "Оставьте хотя бы одну культуру",
+    "ui.controls.window": "окно",
+    "ui.controls.w24": "24 ч",
+    "ui.controls.w7": "7 дней",
+    "ui.controls.w30": "30 дней",
+    "ui.controls.wAll": "всё",
+    "ui.controls.agg": "агрегация",
+    "ui.controls.raw": "по кадрам",
+    "ui.controls.hourly": "по часам",
+    "ui.controls.daily": "по дням",
+    "ui.controls.mode": "режим",
+    "ui.controls.abs": "абсолютный",
+    "ui.controls.idx": "индекс (100)",
+    "ui.controls.delta": "дельта %",
+    "ui.controls.reset": "сброс",
+    "ui.controls.snapshot": "снимок",
+    "ui.controls.naNoTime": "На этой вкладке нет временных рядов",
+    "ui.controls.naBarsOnly": "Только столбцы: режим не применяется",
+    "ui.filter.aggregate": "агрегат по всем панелям",
+    "ui.filter.emptyScope": "не выбрано ни одной панели",
+    "ui.filter.emptyWindow": "в этом окне нет кадров",
+    "ui.filter.invalid": "неверный фильтр: {token}",
+    "ui.filter.keepOne": "Последнюю культуру нельзя снять",
+    "ui.filter.hideNote": "Скрытые панели не меняют ось",
+    "ui.filter.capped": "показаны 3 из {n} панелей",
+    "ui.filter.noFrames": "нет кадров в окне {window}",
+    "ui.fresh.fresh": "свежо",
+    "ui.fresh.warn": "стареет",
+    "ui.fresh.stale": "устарело",
+    "ui.fresh.label": "возраст последнего кадра",
+    "ui.snap.title": "Снимок",
+    "ui.snap.export": "Экспорт",
+    "ui.snap.diff": "Сравнение",
+    "ui.snap.download": "Скачать JSON",
+    "ui.snap.copy": "Копировать JSON",
+    "ui.snap.badSchema": "Это не файл pv-snapshot/1",
+    "ui.snap.filtersDiffer": "Фильтры в A и B различаются",
+    "ui.snap.onlyA": "только в A",
+    "ui.snap.onlyB": "только в B",
+    "ui.snap.unchanged": "без изменений",
+    "ui.snap.notComputable": "не вычислимо",
+    "ui.snap.waiting": "Выберите два файла снимков для сравнения",
+    "ui.snap.empty": "Нет метрик для сравнения",
+    "ui.snap.path": "путь",
+    "ui.snap.delta": "Δ",
+    "ui.snap.saved": "Снимок готов",
+    "ui.ov.lastchange": "Изменение с последнего кадра",
+    "ui.ov.thumbs": "Последние кадры",
+}
+
+FILTER_SCOPE: dict[str, tuple[str, str, str, str]] = {
+    "ch-gr-area-px": ("full", "full", "full", "full"),
+    "ch-gr-area-cm2": ("full", "full", "full", "full"),
+    "ch-gr-rate-bars": ("full", "full", "full", "n/a"),
+    "ch-gr-daily-bars": ("full", "full", "n/a", "n/a"),
+    "ch-gr-daily-table": ("full", "full", "n/a", "n/a"),
+    "ch-ov-kpi-rings": ("all-panels", "n/a", "n/a", "n/a"),
+    "ch-ov-frames-bars": ("hide", "full", "n/a", "n/a"),
+    "ch-ov-status-board": ("hide", "n/a", "n/a", "n/a"),
+    "ch-ov-severity-donut": ("all-panels", "n/a", "n/a", "n/a"),
+    "ch-ov-coverage-strips": ("hide", "full", "n/a", "n/a"),
+    "ch-ov-last-change": ("hide", "n/a", "n/a", "n/a"),
+    "ch-ov-last-frames": ("hide", "n/a", "n/a", "n/a"),
 }
 
 _CARD_META: tuple[tuple[str, str, str, str, int], ...] = (
@@ -192,6 +309,8 @@ _CARD_META: tuple[tuple[str, str, str, str, int], ...] = (
     ("ch-gr-rate-bars", "growth", "rate", "bars-diverging", 1),
     ("ch-gr-daily-bars", "growth", "daily", "bars", 1),
     ("ch-gr-daily-table", "growth", "daily", "table", 1),
+    ("ch-ov-last-change", "overview", "status", "line", 2),
+    ("ch-ov-last-frames", "overview", "status", "image", 2),
 )
 
 _CARD_EN: dict[str, str] = {
@@ -386,6 +505,41 @@ _CARD_EN: dict[str, str] = {
     ),
     "ch-gr-daily-table.conclusion": (
         "The table lists {days} days; {measured} of them carry measured areas."
+    ),
+    "ch-ov-last-change.title": "Change since last frame",
+    "ch-ov-last-change.what": (
+        "Index of the trailing 24 measured frames per panel, first frame = 100."
+    ),
+    "ch-ov-last-change.how": (
+        "Above 100 means bigger than 24 frames ago; the ±2 % band is the "
+        "`growth-stall` threshold."
+    ),
+    "ch-ov-last-change.now": "{panels_delta}",
+    "ch-ov-last-change.do": (
+        "If a panel ends outside the ±2 % band, open Growth › area-px for the "
+        "same panel."
+    ),
+    "ch-ov-last-change.conclusion": (
+        "{n} of {panels} panels moved outside the ±2 % band over their last 24 "
+        "frames; {worst} moved the most."
+    ),
+    "ch-ov-last-frames.title": "Last frames",
+    "ch-ov-last-frames.what": (
+        "The last captured frame of each selected panel, with a mask overlay "
+        "where a mask exists."
+    ),
+    "ch-ov-last-frames.how": (
+        "Compare framing across panels, not plant size: a shifted frame "
+        "invalidates the area step at that timestamp."
+    ),
+    "ch-ov-last-frames.now": "{frames_state}",
+    "ch-ov-last-frames.do": (
+        "If framing moved, fix the rig before reading any area delta from the "
+        "last day."
+    ),
+    "ch-ov-last-frames.conclusion": (
+        "{frames} last frames embedded from {panels} panels; {missing} panel(s) "
+        "have no frame file."
     ),
 }
 
@@ -587,6 +741,41 @@ _CARD_RU: dict[str, str] = {
     ),
     "ch-gr-daily-table.conclusion": (
         "В таблице {days} дней; у {measured} из них есть измеренные площади."
+    ),
+    "ch-ov-last-change.title": "Изменение с последнего кадра",
+    "ch-ov-last-change.what": (
+        "Индекс по последним 24 измеренным кадрам каждой панели, первый кадр = 100."
+    ),
+    "ch-ov-last-change.how": (
+        "Больше 100 — крупнее, чем 24 кадра назад; полоса ±2 % — порог "
+        "`growth-stall`."
+    ),
+    "ch-ov-last-change.now": "{panels_delta}",
+    "ch-ov-last-change.do": (
+        "Если панель выходит за полосу ±2 %, откройте «Рост › площадь px» для "
+        "этой панели."
+    ),
+    "ch-ov-last-change.conclusion": (
+        "За последние 24 кадра {n} из {panels} панелей вышли за полосу ±2 %; "
+        "сильнее всех сдвинулась {worst}."
+    ),
+    "ch-ov-last-frames.title": "Последние кадры",
+    "ch-ov-last-frames.what": (
+        "Последний снятый кадр каждой выбранной панели с наложением маски, где "
+        "маска есть."
+    ),
+    "ch-ov-last-frames.how": (
+        "Сравнивайте кадрирование, а не размер растения: сдвинутый кадр обнуляет "
+        "шаг площади на этой метке времени."
+    ),
+    "ch-ov-last-frames.now": "{frames_state}",
+    "ch-ov-last-frames.do": (
+        "Если кадрирование сместилось, исправьте установку до чтения любой "
+        "дельты площади за последний день."
+    ),
+    "ch-ov-last-frames.conclusion": (
+        "Встроено последних кадров: {frames} для {panels} панелей; у {missing} "
+        "панелей нет файла кадра."
     ),
 }
 
@@ -1137,6 +1326,61 @@ def _values(card_id: str, payload: dict[str, object], lang: str) -> dict[str, st
             "measured": str(len(measured_days)),
         }
 
+    if card_id == "ch-ov-last-change":
+        lines: list[str] = []
+        moves: list[tuple[float, str]] = []
+        outside = 0
+        for panel in panels:
+            series = (
+                panel.get("last_change")
+                if isinstance(panel.get("last_change"), list)
+                else []
+            )
+            label = str(panel.get("label", ""))
+            if not series:
+                lines.append(f"{label}: {missing}")
+                continue
+            last = float(series[-1][1])
+            delta = last - 100.0
+            lines.append(f"{label}: {last:.1f} ({delta:+.1f} %)")
+            moves.append((abs(delta), label))
+            if abs(delta) > 2.0:
+                outside += 1
+        worst = max(moves, key=lambda item: item[0])[1] if moves else dash
+        return {
+            "panels_delta": _join(lines, "; ") or missing,
+            "n": str(outside),
+            "panels": str(len(panels)),
+            "worst": worst,
+        }
+
+    if card_id == "ch-ov-last-frames":
+        records = (
+            payload.get("frames") if isinstance(payload.get("frames"), list) else []
+        )
+        last_records = [
+            record
+            for record in records
+            if isinstance(record, dict)
+            and int(record.get("total", 0) or 0) > 0
+            and int(record.get("index", -1) or -1)
+            == int(record.get("total", 0) or 0) - 1
+        ]
+        present = {str(record.get("panel", "")) for record in last_records}
+        frames = len(last_records)
+        absent = sum(1 for panel in panels if str(panel.get("id", "")) not in present)
+        frames_state = (
+            f"{frames} of {len(panels)} panels have a last frame"
+            if frames
+            else _chip("not-recorded", lang)
+        )
+        return {
+            "frames_state": frames_state,
+            "frames": str(frames),
+            "panels": str(len(panels)),
+            "missing": str(absent),
+        }
+
     raise ValueError(f"no values for {card_id}")
 
 
@@ -1189,6 +1433,15 @@ def _state(card_id: str, payload: dict[str, object]) -> str:
             for panel in panels
         ):
             return "not-computable"
+    if card_id == "ch-ov-last-change":
+        if all(not panel.get("last_change") for panel in panels):
+            return "not-measured"
+    if card_id == "ch-ov-last-frames":
+        records = (
+            payload.get("frames") if isinstance(payload.get("frames"), list) else []
+        )
+        if not records:
+            return "not-measured"
     return "ok"
 
 
@@ -1334,6 +1587,7 @@ def cards_for_payload(payload: dict[str, object]) -> list[dict[str, object]]:
     for card in CARDS:
         values_en = _values(card.id, payload, "en")
         values_ru = _values(card.id, payload, "ru")
+        scope = FILTER_SCOPE[card.id]
         records.append(
             {
                 "id": card.id,
@@ -1343,6 +1597,41 @@ def cards_for_payload(payload: dict[str, object]) -> list[dict[str, object]]:
                 "source": card.source,
                 "state": _state(card.id, payload),
                 "span": card.span,
+                "filter": {
+                    "crop": scope[0],
+                    "window": scope[1],
+                    "agg": scope[2],
+                    "mode": scope[3],
+                },
+                "filter_scope": (
+                    scope[0]
+                    if scope[1] == scope[2] == scope[3] == "hide"
+                    else "mixed"
+                ),
+                "render": (
+                    "client"
+                    if card.id
+                    in {
+                        "ch-gr-area-px",
+                        "ch-gr-area-cm2",
+                        "ch-gr-rate-bars",
+                        "ch-gr-daily-bars",
+                        "ch-gr-daily-table",
+                    }
+                    else "static"
+                ),
+                "key": (
+                    "area_cm2"
+                    if card.id == "ch-gr-area-cm2"
+                    else "area_px"
+                    if card.id
+                    in {
+                        "ch-gr-area-px",
+                        "ch-gr-rate-bars",
+                        "ch-gr-daily-bars",
+                    }
+                    else ""
+                ),
                 "title_en": TEXTS["en"][f"{card.id}.title"],
                 "title_ru": TEXTS["ru"][f"{card.id}.title"],
                 "what_en": TEXTS["en"][f"{card.id}.what"],

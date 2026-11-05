@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from plantvision.analytics.dashboard.build import Panel, build_report
+from plantvision.analytics.dashboard.build import Panel, build_report, load_panels
 from plantvision.analytics.dashboard.copy import TEXTS
 from plantvision.analytics.dashboard.layout import CSS
 from plantvision.analytics.timeseries import TIMESERIES_COLUMNS
@@ -121,7 +121,7 @@ def test_every_alert_anchor_exists(page) -> None:
 def test_each_card_has_four_explanation_fields(page) -> None:
     html, _result, _panels = page
     explains = re.findall(r'<dl class="pv-explain">(.*?)</dl>', html, re.S)
-    assert len(explains) == 10
+    assert len(explains) == 12
     for block in explains:
         assert block.count("<dt ") == 4
         assert block.count("<dd ") == 4
@@ -131,8 +131,8 @@ def test_each_card_has_four_explanation_fields(page) -> None:
 
 def test_drawer_template_for_every_chart(page) -> None:
     html, _result, _panels = page
-    assert len(re.findall(r'<template id="pv-tpl-', html)) == 10
-    assert len(re.findall(r'class="pv-card"', html)) == 10
+    assert len(re.findall(r'<template id="pv-tpl-', html)) == 12
+    assert len(re.findall(r'class="pv-card"', html)) == 12
 
 
 def test_not_measured_never_renders_zero(page) -> None:
@@ -189,7 +189,7 @@ def test_embedded_payload_parses(page) -> None:
     payload = json.loads(block.group(1).replace("<\\/", "</"))
     assert payload["schema"] == "pv-dashboard/2"
     assert payload["totals"]["panels"] == 3
-    assert len(payload["cards"]) == 10
+    assert len(payload["cards"]) == 12
     assert payload["now_source"] == "cli"
     assert result.rows_total == 24
 
@@ -383,3 +383,31 @@ def test_no_crop_or_method_literals_in_src() -> None:
     pattern = re.compile(r"basil|lettuce|phone|sam2|exg", re.I)
     for path in sorted(root.rglob("*.py")):
         assert not pattern.search(path.read_text(encoding="utf-8")), path
+
+
+def test_controls_markup(page) -> None:
+    html, _result, _panels = page
+    assert 'class="pv-controls"' in html
+    for control in ("pv-f-crop", "pv-f-window", "pv-f-agg", "pv-f-mode"):
+        assert f'id="{control}"' in html
+    assert 'id="pv-crop-pop"' in html
+    assert 'id="pv-filter-note"' in html
+
+
+def test_snapshot_dialog_markup(page) -> None:
+    html, _result, _panels = page
+    assert 'id="pv-snap"' in html
+    assert 'id="pv-snap-text"' in html
+    assert 'id="pv-snap-a"' in html and 'id="pv-snap-b"' in html
+    assert 'id="pv-snap-table"' in html
+    assert html.count("data-snap-tab=") == 2
+
+
+def test_last_frames_card_images(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parent.parent
+    panels = load_panels(root / "configs" / "dashboard-panels.yaml")
+    out = tmp_path / "frames.html"
+    build_report(panels, out, now=NOW, title="Frames", include_frames=True)
+    html = out.read_text(encoding="utf-8")
+    assert html.count('class="pv-frame"') == 3
+    assert len(re.findall(r"<img\b", html)) == len(re.findall(r'\balt="', html))

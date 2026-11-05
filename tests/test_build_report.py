@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import importlib.util
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
 import yaml
 
+from plantvision.analytics.dashboard.build import build_report, load_panels
 from plantvision.analytics.dashboard.frames import select_frames
 from plantvision.analytics.timeseries import TIMESERIES_COLUMNS
 
@@ -212,3 +215,37 @@ def test_cli_lang_ru_sets_html_lang(tmp_path: Path, capsys) -> None:
     html = out.read_text(encoding="utf-8")
     assert '<html lang="ru">' in html
     assert "Обзор" in html
+
+
+def test_payload_budget_gate(tmp_path: Path) -> None:
+    config, _stores = _write_config(tmp_path)
+    panels = load_panels(config)
+    out = tmp_path / "index.html"
+    with pytest.raises(ValueError, match="^payload .* exceeds budget"):
+        build_report(
+            panels,
+            out,
+            now=datetime(2026, 11, 3, 12, tzinfo=timezone.utc),
+            title="T",
+            include_frames=False,
+            max_json_bytes=1,
+        )
+    assert not out.exists()
+
+
+def test_two_builds_identical(tmp_path: Path) -> None:
+    config, _stores = _write_config(tmp_path)
+    panels = load_panels(config)
+    first = tmp_path / "a.html"
+    second = tmp_path / "b.html"
+    for path in (first, second):
+        build_report(
+            panels,
+            path,
+            now=datetime(2026, 11, 3, 12, tzinfo=timezone.utc),
+            title="T",
+            include_frames=False,
+        )
+    assert hashlib.sha256(first.read_bytes()).hexdigest() == hashlib.sha256(
+        second.read_bytes()
+    ).hexdigest()

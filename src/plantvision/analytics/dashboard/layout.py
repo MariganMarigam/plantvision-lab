@@ -192,6 +192,27 @@ a:hover{text-decoration:underline}
 }
 """.replace("FONT_STACK", FONT_STACK)
 
+CONTROL_CSS: str = """
+.pv-controls{display:flex;align-items:center;gap:6px;min-width:0;overflow-x:auto;scrollbar-width:none}
+.pv-ctl{display:inline-flex;align-items:center;gap:5px;min-height:32px;padding:4px 9px;border:1px solid rgba(251,196,144,.35);border-radius:var(--pv-r-ctrl);background:var(--pv-card-2);color:var(--pv-ink);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
+.pv-ctl:hover{border-color:var(--pv-a1);background:#3d3670}.pv-ctl:disabled,.pv-ctl[aria-disabled=true]{opacity:.5;cursor:not-allowed}
+.pv-ctl-val{color:var(--pv-a1);font-weight:600}
+.pv-pop{position:absolute;z-index:40;margin-top:6px;padding:10px;min-width:220px;background:var(--pv-card-2);border:1px solid rgba(251,196,144,.35);border-radius:var(--pv-r-card)}
+.pv-pop label{display:flex;gap:8px;align-items:center;padding:6px 4px;min-height:32px;cursor:pointer}.pv-pop input{width:16px;height:16px;accent-color:var(--pv-a0)}
+.pv-note{grid-column:1/-1;font-size:12px;color:var(--pv-a1)}.pv-note[hidden]{display:none}
+.pv-fresh{display:inline-flex;gap:4px;align-items:center;padding:2px 7px;border-radius:999px;font-size:11px}
+.pv-fresh[data-state=fresh]{background:rgba(47,227,167,.16);color:var(--pv-pos)}.pv-fresh[data-state=warn]{background:rgba(251,196,144,.16);color:var(--pv-a1)}.pv-fresh[data-state=stale]{background:rgba(245,112,94,.16);color:var(--pv-neg)}
+.pv-snap-backdrop{position:fixed;inset:0;background:rgba(10,8,22,.72);z-index:60}
+.pv-snap{position:fixed;inset:5vh 5vw auto;max-height:90vh;overflow:auto;background:var(--pv-card);border:1px solid var(--pv-grid);border-radius:var(--pv-r-card);z-index:61;padding:20px}
+.pv-snap[hidden],.pv-snap-backdrop[hidden]{display:none}
+.pv-snap textarea{width:100%;min-height:160px;font:12px/1.4 ui-monospace,monospace;background:var(--pv-bg);color:var(--pv-ink);border:1px solid var(--pv-grid);padding:8px}
+.pv-framegrid{display:flex;flex-wrap:wrap;gap:8px}.pv-frame{border:0;padding:0;background:transparent;cursor:pointer}.pv-frame img{width:100%;height:auto}
+@media (max-width:899px){.pv-topbar{flex-wrap:wrap}.pv-actions{flex:1 1 100%;margin-left:0;flex-wrap:wrap}.pv-controls{order:3;flex-basis:100%;scroll-snap-type:x proximity}.pv-ctl{min-height:44px}}
+@media (max-width:599px){.pv-pop{position:fixed;left:0;right:0;bottom:0;border-radius:var(--pv-r-card) var(--pv-r-card) 0 0}}
+@media print{.pv-controls,.pv-snap,.pv-snap-backdrop{display:none!important}}
+"""
+CSS = CSS + CONTROL_CSS
+
 
 def _txt(key: str, lang: str) -> str:
     """Localised UI string."""
@@ -340,7 +361,9 @@ def _topbar(
     lang_en, lang_ru = TEXTS["en"]["ui.lang"], TEXTS["ru"]["ui.lang"]
     actions = (
         '<div class="pv-actions">'
-        f'<button type="button" class="pv-lang" id="pv-lang" aria-label="Language">'
+        + controls(payload, lang)
+        + freshness_chips(payload, lang)
+        + f'<button type="button" class="pv-lang" id="pv-lang" aria-label="Language">'
         f'<span data-en="{esc(lang_en)}" data-ru="{esc(lang_ru)}">'
         f'{esc(lang_en if lang == "en" else lang_ru)}</span></button>'
         + _leaf("span", stamp_en, stamp_ru, lang, cls="pv-asof")
@@ -510,6 +533,7 @@ def _card(
     payload: dict[str, object],
     lang: str,
     cols: int = 3,
+    frames: dict[str, str] | None = None,
 ) -> str:
     """One bento card with its explainer strip and conclusion."""
     card_id = str(card["id"])
@@ -520,6 +544,8 @@ def _card(
         figure = _board_table(payload, lang)
     elif chart == "table":
         figure = _daily_table(payload, lang)
+    elif chart == "image":
+        figure = _image_grid(payload, card_id, frames or {})
     elif svg:
         figure = svg
     else:
@@ -557,6 +583,9 @@ def _card(
         f'<article class="pv-card" id="pv-card-{card_id}" data-chart="{card_id}" '
         f'data-tab="{esc(str(card["tab"]))}" data-sub="{esc(str(card["sub"]))}" '
         f'data-span="{clamped}" '
+        f'data-render="{esc(str(card.get("render", "static")))}" '
+        f'data-filter-scope="{esc(str(card.get("filter_scope", "all-panels")))}" '
+        f'data-card-key="{esc(str(card.get("key", "")))}" '
         f'data-key="{esc("area_cm2" if "cm2" in card_id else "area_px" if "area-px" in card_id else "")}">'
         '<header class="pv-card-head">'
         + _leaf("h3", title_en, title_ru, lang)
@@ -614,7 +643,7 @@ def _panel(
         sub_cards = [card for card in cards if card.get("sub") == sub]
         cols = max(1, min(len(sub_cards), 3))
         markup = "".join(
-            _card(card, svgs.get(str(card["id"]), ""), payload, lang, cols)
+            _card(card, svgs.get(str(card["id"]), ""), payload, lang, cols, frames)
             for card in sub_cards
         )
         groups.append(
@@ -652,6 +681,249 @@ def _drawer(lang: str) -> str:
         "</div>"
         '<div class="pv-drawer-body" id="pv-drawer-body"></div>'
         "</aside>"
+    )
+
+
+def _termlabel(key: str, lang: str) -> str:
+    """One UI term carrying both languages for the JS renderer."""
+    return _leaf(
+        "span",
+        TEXTS["en"][key],
+        TEXTS["ru"][key],
+        lang,
+        attrs=f' data-term="{esc(key)}" hidden',
+    )
+
+
+def freshness_chips(payload: dict[str, object], lang: str) -> str:
+    """One freshness chip per panel: label · age, state fresh|warn|stale."""
+    panels = payload.get("panels") if isinstance(payload.get("panels"), list) else []
+    chips: list[str] = []
+    title = _txt("ui.fresh.label", lang)
+    for panel in panels:
+        age = panel.get("age_days")
+        if age is None:
+            state = "stale"
+            value = _txt("ui.chip.not-measured", lang)
+        else:
+            age_value = float(age)
+            state = "fresh" if age_value < 2 else "warn" if age_value < 7 else "stale"
+            value = f"{age_value:.1f} d"
+        chips.append(
+            f'<span class="pv-fresh" data-state="{state}" '
+            f'data-panel="{esc(str(panel.get("id", "")))}" title="{esc(title)}">'
+            f'{esc(str(panel.get("label", "")))} · {esc(value)}</span>'
+        )
+    return "".join(chips)
+
+
+def _select(
+    control_id: str,
+    values: Sequence[object],
+    labels: Sequence[str],
+    lang: str,
+) -> str:
+    """One filter select with bilingual option labels."""
+    options: list[str] = []
+    for value, label in zip(values, labels):
+        en = TEXTS["en"][label]
+        ru = TEXTS["ru"][label]
+        options.append(
+            f'<option value="{esc(str(value))}" data-en="{esc(en)}" '
+            f'data-ru="{esc(ru)}">{esc(en if lang == "en" else ru)}</option>'
+        )
+    return (
+        f'<select class="pv-ctl" id="{control_id}" aria-label="{esc(labels[0])}">'
+        + "".join(options)
+        + "</select>"
+    )
+
+
+def controls(payload: dict[str, object], lang: str) -> str:
+    """Crop popover, window/aggregation/mode selects, reset and snapshot buttons."""
+    crops = payload.get("crops") if isinstance(payload.get("crops"), list) else []
+    filters = payload.get("filters") if isinstance(payload.get("filters"), dict) else {}
+    crop_label = _leaf(
+        "span", TEXTS["en"]["ui.controls.crop"], TEXTS["ru"]["ui.controls.crop"], lang
+    )
+    crop_value = _leaf(
+        "span",
+        TEXTS["en"]["ui.controls.cropAll"],
+        TEXTS["ru"]["ui.controls.cropAll"],
+        lang,
+        cls="pv-ctl-val",
+    ).replace("<span", '<span id="pv-f-crop-val"', 1)
+    rows: list[str] = []
+    for crop in crops:
+        name = str(crop.get("name", ""))
+        count = int(crop.get("rows", 0) or 0)
+        rows.append(
+            f'<label><input type="checkbox" class="pv-crop-box" '
+            f'value="{esc(name)}" checked>'
+            f'<span>{esc(name)}</span><span class="pv-zero">{count}</span></label>'
+        )
+    popover = (
+        f'<div id="pv-crop-pop" class="pv-pop" hidden role="group" '
+        f'aria-label="{esc(_txt("ui.controls.cropHint", lang))}">'
+        + "".join(rows)
+        + "</div>"
+    )
+    windows = _select(
+        "pv-f-window",
+        filters.get("windows", ()),
+        ("ui.controls.w24", "ui.controls.w7", "ui.controls.w30", "ui.controls.wAll"),
+        lang,
+    )
+    aggs = _select(
+        "pv-f-agg",
+        filters.get("aggs", ()),
+        ("ui.controls.raw", "ui.controls.hourly", "ui.controls.daily"),
+        lang,
+    )
+    modes = _select(
+        "pv-f-mode",
+        filters.get("modes", ()),
+        ("ui.controls.abs", "ui.controls.idx", "ui.controls.delta"),
+        lang,
+    )
+    reset = (
+        f'<button type="button" id="pv-f-reset" class="pv-ctl pv-ctl-btn" disabled>'
+        f"{esc(_txt('ui.controls.reset', lang))}</button>"
+    )
+    snap = (
+        f'<button type="button" id="pv-f-snap" class="pv-ctl pv-ctl-btn" '
+        f'aria-haspopup="dialog" aria-controls="pv-snap">'
+        f"{esc(_txt('ui.controls.snapshot', lang))}</button>"
+    )
+    terms = "".join(
+        _termlabel(key, lang)
+        for key in (
+            "ui.controls.cropAll",
+            "ui.filter.invalid",
+            "ui.filter.keepOne",
+            "ui.filter.capped",
+            "ui.filter.aggregate",
+            "ui.filter.noFrames",
+            "ui.filter.emptyWindow",
+            "ui.snap.badSchema",
+            "ui.snap.filtersDiffer",
+            "ui.snap.onlyA",
+            "ui.snap.onlyB",
+            "ui.snap.unchanged",
+            "ui.snap.notComputable",
+            "ui.snap.waiting",
+            "ui.snap.empty",
+            "ui.snap.path",
+            "ui.snap.delta",
+        )
+    )
+    return (
+        '<div class="pv-controls" role="group" aria-label="Filters">'
+        f'<button type="button" id="pv-f-crop" class="pv-ctl" aria-expanded="false" '
+        f'aria-controls="pv-crop-pop">{crop_label}{crop_value}</button>'
+        + popover
+        + windows
+        + aggs
+        + modes
+        + reset
+        + snap
+        + terms
+        + '</div><div id="pv-filter-note" role="status" class="pv-note" hidden></div>'
+    )
+
+
+def snapshot_dialog(lang: str) -> str:
+    """Modal with an Export pane and a Diff pane (two file inputs + result table)."""
+    title = _leaf("h2", TEXTS["en"]["ui.snap.title"], TEXTS["ru"]["ui.snap.title"], lang)
+    title = title.replace("<h2", '<h2 id="pv-snap-h2"', 1)
+    export_label = _leaf(
+        "span", TEXTS["en"]["ui.snap.export"], TEXTS["ru"]["ui.snap.export"], lang
+    )
+    diff_label = _leaf(
+        "span", TEXTS["en"]["ui.snap.diff"], TEXTS["ru"]["ui.snap.diff"], lang
+    )
+    return (
+        '<div class="pv-snap-backdrop" hidden></div>'
+        '<div id="pv-snap" class="pv-snap" role="dialog" aria-modal="true" '
+        'aria-labelledby="pv-snap-h2" hidden>'
+        '<div class="pv-snap-head">'
+        + title
+        + '<button type="button" class="pv-close" data-snap-close>'
+        + esc(_txt("ui.close", lang))
+        + "</button></div>"
+        '<div class="pv-snap-tabs" role="tablist">'
+        f'<button type="button" class="pv-subtab" data-snap-tab="export" '
+        f'role="tab" aria-selected="true">{export_label}</button>'
+        f'<button type="button" class="pv-subtab" data-snap-tab="diff" '
+        f'role="tab" aria-selected="false">{diff_label}</button>'
+        "</div>"
+        '<section data-snap-pane="export">'
+        f'<button type="button" class="pv-ctl" id="pv-snap-dl">'
+        f'{esc(_txt("ui.snap.download", lang))}</button>'
+        f'<button type="button" class="pv-ctl" id="pv-snap-copy">'
+        f'{esc(_txt("ui.snap.copy", lang))}</button>'
+        '<code id="pv-snap-name"></code>'
+        '<textarea id="pv-snap-text" readonly '
+        f'aria-label="{esc(_txt("ui.snap.title", lang))}"></textarea>'
+        "</section>"
+        '<section data-snap-pane="diff" hidden>'
+        f'<label><span>{esc(_txt("ui.snap.diff", lang))} A</span>'
+        '<input type="file" accept="application/json, .json" id="pv-snap-a"></label>'
+        f'<label><span>{esc(_txt("ui.snap.diff", lang))} B</span>'
+        '<input type="file" accept="application/json, .json" id="pv-snap-b"></label>'
+        '<div id="pv-snap-banner" role="status" hidden></div>'
+        f'<table id="pv-snap-table"><caption>{esc(_txt("ui.snap.diff", lang))}</caption>'
+        '<thead><tr><th scope="col">path</th><th scope="col">A</th>'
+        '<th scope="col">B</th><th scope="col">Δ</th></tr></thead>'
+        "<tbody></tbody></table>"
+        "</section>"
+        "</div>"
+    )
+
+
+def _image_grid(
+    payload: dict[str, object], card_id: str, frames: dict[str, str]
+) -> str:
+    """Last-frame tiles (or the full gallery) with an honest missing state."""
+    panels = payload.get("panels") if isinstance(payload.get("panels"), list) else []
+    records = payload.get("frames") if isinstance(payload.get("frames"), list) else []
+    selected: list[dict[str, object]] = []
+    if card_id == "ca-gallery":
+        selected = [record for record in records if isinstance(record, dict)]
+    else:
+        for panel in panels:
+            panel_id = str(panel.get("id", ""))
+            last = None
+            for record in records:
+                if not isinstance(record, dict) or record.get("panel") != panel_id:
+                    continue
+                total = int(record.get("total", 0) or 0)
+                index = int(record.get("index", -1) or -1)
+                if total > 0 and index == total - 1:
+                    last = record
+            if last is not None:
+                selected.append(last)
+    tiles: list[str] = []
+    for record in selected:
+        frame_id = str(record.get("id", ""))
+        source = frames.get(frame_id, "")
+        alt = str(record.get("alt", ""))
+        if not source:
+            continue
+        tiles.append(
+            f'<button class="pv-frame" data-frame="{esc(frame_id)}" '
+            f'aria-label="{esc(alt)}"><img src="{source}" alt="{esc(alt)}" '
+            'width="288" height="162" loading="lazy"></button>'
+        )
+    if tiles:
+        return '<div class="pv-framegrid">' + "".join(tiles) + "</div>"
+    return _leaf(
+        "div",
+        TEXTS["en"]["ui.chip.not-recorded"],
+        TEXTS["ru"]["ui.chip.not-recorded"],
+        "en",
+        attrs=' data-state="not-recorded"',
+        cls="pv-empty",
     )
 
 
@@ -855,6 +1127,7 @@ def render_page(
         + f'<main class="pv-main" id="pv-main">{panels_html}</main>'
         "</div></div>"
         + _drawer(lang)
+        + snapshot_dialog(lang)
         + _templates(cards, payload, lang)
         + f'<script type="application/json" id="pv-data">{data_json}</script>'
         + f'<script type="application/json" id="pv-labels">{labels_json}</script>'
@@ -864,7 +1137,7 @@ def render_page(
     return document
 
 
-JS = r"""
+_JS_CORE = r"""
 (function () {
   "use strict";
   var state = { lang: document.documentElement.lang === "ru" ? "ru" : "en", opener: null, tab: null };
@@ -895,6 +1168,9 @@ JS = r"""
 
   function parseRoute(hash) {
     var raw = (hash || "").replace(/^#\/?/, "");
+    var bang = raw.indexOf("!");
+    var filterRaw = bang >= 0 ? raw.slice(bang + 1) : "";
+    if (bang >= 0) { raw = raw.slice(0, bang); }
     var chart = null;
     var tilde = raw.indexOf("~");
     if (tilde >= 0) {
@@ -905,7 +1181,7 @@ JS = r"""
     var known = tabs();
     var tab = parts[0] || "overview";
     if (known.indexOf(tab) < 0) {
-      return { tab: "overview", sub: subsFor("overview")[0] || "", chart: null };
+      return { tab: "overview", sub: subsFor("overview")[0] || "", chart: null, filter: parseFilters(filterRaw) };
     }
     var subs = subsFor(tab);
     var sub = parts[1] || subs[0] || "";
@@ -917,7 +1193,7 @@ JS = r"""
         sub = template.getAttribute("data-sub") || sub;
       }
     }
-    return { tab: tab, sub: sub, chart: chart };
+    return { tab: tab, sub: sub, chart: chart, filter: parseFilters(filterRaw) };
   }
 
   function updateCrumb(route) {
@@ -947,6 +1223,7 @@ JS = r"""
     var changed = state.tab !== null && state.tab !== route.tab;
     document.body.setAttribute("data-tab", route.tab);
     updateCrumb(route);
+    try { applyFilters(route.filter || null, route); } catch (err) { /* static page wins */ }
     Array.prototype.forEach.call(rail.querySelectorAll("[role=tab]"), function (button) {
       var active = button.getAttribute("data-tab") === route.tab;
       button.setAttribute("aria-selected", active ? "true" : "false");
@@ -1020,8 +1297,8 @@ JS = r"""
     var close = drawer.querySelector("[data-close]");
     if (close) { close.focus(); }
     if (push) {
-      location.hash = "#/" + (template.getAttribute("data-tab") || "overview") + "/" +
-        (template.getAttribute("data-sub") || "") + "~" + cardId;
+      writeHash(template.getAttribute("data-tab") || "overview",
+        template.getAttribute("data-sub") || "", cardId);
     }
   }
 
@@ -1040,7 +1317,7 @@ JS = r"""
       var tab = document.body.getAttribute("data-tab") || "overview";
       var activeGroup = document.querySelector('.pv-subgroup[data-for-tab="' + tab + '"] .pv-subtab[aria-selected="true"]');
       var sub = activeGroup ? activeGroup.getAttribute("data-sub") : "";
-      location.hash = "#/" + tab + (sub ? "/" + sub : "");
+      writeHash(tab, sub, null);
     }
   }
 
@@ -1086,11 +1363,11 @@ JS = r"""
     if (target === backdrop) { closeDrawer(true); return; }
     var subtab = target.closest && target.closest(".pv-subtab");
     if (subtab) {
-      location.hash = "#/" + subtab.getAttribute("data-tab") + "/" + subtab.getAttribute("data-sub");
+      writeHash(subtab.getAttribute("data-tab"), subtab.getAttribute("data-sub"), null);
       return;
     }
     var railButton = target.closest && target.closest(".pv-rail [role=tab]");
-    if (railButton) { location.hash = "#/" + railButton.getAttribute("data-tab"); return; }
+    if (railButton) { writeHash(railButton.getAttribute("data-tab"), "", null); return; }
     if (target.closest && target.closest("#pv-lang")) {
       applyLang(state.lang === "en" ? "ru" : "en", document);
     }
@@ -1171,10 +1448,402 @@ JS = r"""
       applyLang(saved, document);
     }
   } catch (err) { /* storage disabled */ }
+  function E(v){return String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+  function P(v){return v<10?"0"+v:String(v);}
+  function R6(v){return Math.round(v*1e6)/1e6;}
+  function num(v){var t=Number(v).toFixed(2);return t==="-0.00"?"0.00":t;}
+  function N(){return payload&&payload.crops?payload.crops.map(function(c){return String(c.name);}):[];}
+  function EN(k){return payload&&payload.filters&&payload.filters[k]?payload.filters[k]:[];}
+  function def(){return{crops:null,window:"all",agg:"raw",mode:"abs",notices:[]};}
+
+  function med(a){
+    var s=a.slice().sort(function(x,y){return x-y;}),m=Math.floor(s.length/2);
+    return s.length%2?s[m]:(s[m-1]+s[m])/2;
+  }
+  function sc(dom,out){
+    var a=dom[0],b=dom[1];if(b===a){a-=.5;b+=.5;}
+    return function(v){return out[0]+(v-a)*(out[1]-out[0])/(b-a);};
+  }
+  function yd(v){
+    var lo=Math.min.apply(null,v),hi=Math.max.apply(null,v),sp=hi-lo,pd=sp===0?1:sp*.07;
+    return[lo-pd,hi+pd];
+  }
+  function xd(t){
+    var lo=Math.min.apply(null,t),hi=Math.max.apply(null,t);
+    return lo===hi?[lo-H,hi+H]:[lo,hi];
+  }
+  function ticks(lo,hi){
+    if(hi===lo)return[lo];
+    var raw=(hi-lo)/4,mag=Math.pow(10,Math.floor(Math.log(raw)/Math.LN10)),st=[1,2,2.5,5,10],step=st[0]*mag,best=Math.abs(step-raw);
+    st.forEach(function(m){var c=Math.abs(m*mag-raw);if(c<best){best=c;step=m*mag;}});
+    var out=[],v=Math.ceil(lo/step-1e-9)*step;
+    while(v<=hi+1e-9){out.push(Math.round(v*1e10)/1e10);v+=step;}
+    return out;
+  }
+  function lbl(ms,sp){
+    var d=new Date(ms);
+    return sp<48*H?P(d.getUTCHours())+":"+P(d.getUTCMinutes()):P(d.getUTCDate())+" "+MON[d.getUTCMonth()];
+  }
+  function iso(ms){return new Date(ms).toISOString().replace(/\.\d{3}Z$/,"Z");}
+  function frame(card,h){
+    var id=card.getAttribute("data-chart")||"chart",t=card.querySelector("h3");
+    return '<svg class="pv-chart" viewBox="0 0 '+G.w+" "+h+'" role="img" aria-labelledby="'+E(id)+'-t" preserveAspectRatio="xMidYMid meet" data-chart="'+E(id)+'"><title id="'+E(id)+'-t">'+E(t.textContent)+"</title>";
+  }
+  function clear(fig){Array.prototype.forEach.call(fig.querySelectorAll("svg,.pv-tablewrap,.pv-empty"),function(n){n.parentNode.removeChild(n);});}
+  function empty(t){return '<div class="pv-empty" role="note" data-state="not-measured"><p class="pv-empty-t">'+E(T("ui.filter.emptyWindow"))+"</p><p>"+E(t||T("ui.filter.emptyWindow"))+"</p></div>";}
+
+  function stable(v){
+    if(v===null||typeof v!=="object")return JSON.stringify(v);
+    if(Object.prototype.toString.call(v)==="[object Array]")return"["+v.map(stable).join(",")+"]";
+    return"{"+Object.keys(v).sort().map(function(k){return JSON.stringify(k)+":"+stable(v[k]);}).join(",")+"}";
+  }
+  function flat(v,p,out,skip){
+    if(v===null||typeof v!=="object"){out[p]=v;return;}
+    if(Object.prototype.toString.call(v)==="[object Array]"){v.forEach(function(x,i){flat(x,p+"["+i+"]",out,skip);});return;}
+    Object.keys(v).forEach(function(k){if(skip&&skip.indexOf(k)>=0)return;flat(v[k],p?p+"."+k:k,out,skip);});
+  }
+  function same(a,b){return typeof a==="number"&&typeof b==="number"?Math.abs(a-b)<=1e-9:String(a)===String(b);}
+  function pts(p,k){
+    var g=(p&&p.points)||{},ts=g.ts||[],vs=g[k]||[],o=[];
+    for(var i=0;i<ts.length&&i<vs.length;i++)o.push([Number(ts[i]),vs[i]===null||vs[i]===undefined?null:Number(vs[i])]);
+    return o.sort(function(a,b){return a[0]-b[0];});
+  }
+  function down(a){
+    if(a.length<=240)return a;
+    var st=Math.ceil(a.length/240),out=[];
+    for(var i=0;i<a.length;i+=st){
+      var g=a.slice(i,i+st);if(!g.length)continue;
+      var mv=g.map(function(q,j){return[q,j];}).filter(function(x){return x[0][1]!==null&&isFinite(x[0][1]);}),c=[0,g.length-1];
+      if(mv.length){
+        var lo=0,hi=0;
+        for(var j=1;j<mv.length;j++){if(mv[j][0][1]<mv[lo][0][1])lo=j;if(mv[j][0][1]>mv[hi][0][1])hi=j;}
+        c.push(mv[lo][1],mv[hi][1]);
+      }
+      c.sort(function(x,y){return x-y;}).forEach(function(o){if(out.indexOf(g[o])<0)out.push(g[o]);});
+    }
+    return out.sort(function(x,y){return x[0]-y[0];});
+  }
+  function runs(a){
+    var p=a.filter(function(q){return q[1]!==null&&isFinite(q[1]);});
+    if(!p.length)return[];
+    var gaps=[],i;
+    for(i=1;i<p.length;i++)gaps.push(p[i][0]-p[i-1][0]);
+    var th=gaps.length?Math.max(3*med(gaps),2*H):2*H,out=[[p[0]]];
+    for(i=1;i<p.length;i++){if(p[i][0]-p[i-1][0]>th)out.push([p[i]]);else out[out.length-1].push(p[i]);}
+    return out;
+  }
+  function agg(p,k,f,b){
+    var a=pts(p,k).filter(function(q){return q[0]>=b.lo&&q[0]<=b.hi;});
+    if(f.agg==="raw")return a;
+    var sz=f.agg==="hourly"?H:D,bk={};
+    a.forEach(function(q){
+      if(q[1]===null||!isFinite(q[1]))return;
+      var s=Math.floor(q[0]/sz)*sz;if(!bk[s])bk[s]=[];bk[s].push(q[1]);
+    });
+    return Object.keys(bk).map(Number).sort(function(x,y){return x-y;}).map(function(s){return[s,R6(med(bk[s]))];});
+  }
+  function tr(a,m){
+    if(m==="abs")return{points:a};
+    var base=null;
+    a.forEach(function(q){if(base===null&&q[1]!==null&&isFinite(q[1]))base=q[1];});
+    if(base===null||base<=0)return{points:[],error:"not computable"};
+    return{points:a.map(function(q){return[q[0],q[1]===null||!isFinite(q[1])?null:(m==="idx"?100*q[1]/base:100*(q[1]-base)/base)];})};
+  }
+  /*__FILTER__*/
   detectTier();
   applyRoute(parseRoute(location.hash), true);
 })();
 """
 
+JS_FILTER: str = r"""var H=36e5,D=864e5;
+state.filters={crops:null,window:"all",agg:"raw",mode:"abs",notices:[]};
+state.route={tab:document.body.getAttribute("data-tab")||"overview",sub:"",chart:null};
+var G=(payload&&payload.renderer)||{w:720,h:240,hm:266,pl:52,pt:18,pr:18,pb:40,pw:650,ph:182,legendY:258,xLabelY:226,xTitleY:238,lastX:700,tickY:30};
+var SLOT={A:{s:"url(#pv-grad-a)",d:"",w:"#F5705E"},B:{s:"url(#pv-grad-b)",d:' stroke-dasharray="6 4"',w:"#C159F5"},C:{s:"var(--pv-pos)",d:' stroke-dasharray="1 3"',w:"var(--pv-pos)"}};
+var MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+var EK={w:"windows",a:"aggs",m:"modes"},EF={w:"window",a:"agg",m:"mode"};
+
+function T(k){var n=document.querySelector('[data-term="'+k+'"]');return n?(n.getAttribute("data-"+state.lang)||n.getAttribute("data-en")||k):k;}
+function parseFilters(raw){
+  var o=def(),all=N();
+  (raw||"").split("&").forEach(function(p){
+    if(!p)return;
+    var i=p.indexOf("=");
+    if(i<0){o.notices.push(p);return;}
+    var k=p.slice(0,i),v=p.slice(i+1),c=[];
+    if(k==="c"){
+      v.split(",").forEach(function(t){
+        var n=t;try{n=decodeURIComponent(t);}catch(e){n=t;}
+        if(all.indexOf(n)>=0){if(c.indexOf(n)<0)c.push(n);}else if(n)o.notices.push(n);
+      });
+      o.crops=c.length?all.filter(function(n){return c.indexOf(n)>=0;}):null;
+      if(!c.length&&v)o.notices.push(v);
+    }else if(EK[k]&&EN(EK[k]).indexOf(v)>=0){o[EF[k]]=v;}else{o.notices.push(v||k);}
+  });
+  return o;
+}
+function canon(f){
+  f=f||state.filters;
+  var all=N(),sel=f.crops?all.filter(function(n){return f.crops.indexOf(n)>=0;}):all,p=[];
+  if(sel.length&&sel.length<all.length)p.push("c="+sel.map(encodeURIComponent).join(","));
+  if(f.window!=="all")p.push("w="+f.window);
+  if(f.agg!=="raw")p.push("a="+f.agg);
+  if(f.mode!=="abs")p.push("m="+f.mode);
+  return p.length?"!"+p.join("&"):"";
+}
+function writeHash(t,s,c){
+  var n="#/"+t+(s?"/"+s:"")+(c?"~"+encodeURIComponent(c):"")+canon(state.filters);
+  if(n!==location.hash)location.hash=n;
+}
+function commit(){var r=state.route||{tab:"overview",sub:"",chart:null};writeHash(r.tab,r.sub,r.chart);}
+
+function pick(f){
+  f=f||state.filters;var ps=(payload&&payload.panels)||[];
+  return f.crops?ps.filter(function(p){return f.crops.indexOf(String(p.crop||""))>=0;}):ps.slice();
+}
+function bd(f){
+  var now=payload?Date.parse(payload.now):0;
+  if(f.window==="24h")return{lo:now-D,hi:now};
+  if(f.window==="7d")return{lo:now-7*D,hi:now};
+  if(f.window==="30d")return{lo:now-30*D,hi:now};
+  var lo=null,hi=null;
+  pick(f).forEach(function(p){
+    var a=Date.parse(p.first_at||""),b=Date.parse(p.last_at||"");
+    if(isFinite(a))lo=lo===null?a:Math.min(lo,a);
+    if(isFinite(b))hi=hi===null?b:Math.max(hi,b);
+  });
+  return lo===null||hi===null?{lo:now-D,hi:now}:{lo:lo,hi:Math.min(hi,now)};
+}
+function drawLine(card,list,opt){
+  var fig=card.querySelector(".pv-figure");if(!fig)return;clear(fig);
+  var ss=[],vv=[],tt=[],drawn=0;
+  list.forEach(function(it){var r=tr(it.points,state.filters.mode),a=r.points||[],m=a.filter(function(q){return q[1]!==null&&isFinite(q[1]);});if(m.length)drawn++;m.forEach(function(q){vv.push(q[1]);tt.push(q[0]);});ss.push({slot:it.slot,label:it.label,points:down(a),panel:it.panel});});
+  if(!vv.length){fig.insertAdjacentHTML("afterbegin",empty());return;}
+  var multi=drawn>1,h=multi?G.hm:G.h,y=yd(vv),x=xd(tt),ys=sc(y,[G.pt+G.ph,G.pt]),xs=sc(x,[G.pl,G.pl+G.pw]),o=[frame(card,h)],i,dec=y[1]>=10?0:2;
+  ticks(y[0],y[1]).forEach(function(v){var py=ys(v);o.push('<line x1="'+G.pl+'" y1="'+num(py)+'" x2="'+(G.pl+G.pw)+'" y2="'+num(py)+'" stroke="var(--pv-grid)"/>','<text x="46" y="'+num(py)+'" class="pv-ax" text-anchor="end">'+v.toFixed(dec)+"</text>");});
+  var sp=x[1]-x[0];
+  if(sp)for(i=0;i<6;i++){var ms=x[0]+sp*i/5,px=xs(ms);o.push('<text x="'+num(px)+'" y="'+G.xLabelY+'" class="pv-ax" text-anchor="middle">'+lbl(ms,sp)+"</text>");}
+  (opt.thresholds||[]).forEach(function(t){if(t.value<y[0]||t.value>y[1])return;var py=ys(t.value),c=t.kind==="warn"?"#FBC490":"#F5705E";o.push('<line x1="'+G.pl+'" x2="'+(G.pl+G.pw)+'" y1="'+num(py)+'" y2="'+num(py)+'" stroke="'+c+'" stroke-dasharray="'+(t.kind==="warn"?"4 3":"2 2")+'"/>');});
+  ss.forEach(function(it){
+    var st=SLOT[it.slot]||SLOT.A,rs=runs(it.points);
+    o.push('<g data-series="'+it.slot+'" data-label="'+E(it.label)+'">');
+    rs.forEach(function(r){if(r.length<2)return;o.push('<path class="pv-line pv-draw" d="'+r.map(function(q,j){return(j?"L":"M")+num(xs(q[0]))+" "+num(ys(q[1]));}).join(" ")+'" fill="none" stroke="'+st.s+'" stroke-width="2" vector-effect="non-scaling-stroke" pathLength="1"'+st.d+"/>");});
+    rs.forEach(function(r){r.forEach(function(q){o.push('<circle cx="'+num(xs(q[0]))+'" cy="'+num(ys(q[1]))+'" r="1.9" fill="'+st.s+'"/>');});});
+    if(opt.key==="area_cm2")it.points.forEach(function(q){if(q[1]===null)o.push('<circle cx="'+num(xs(Math.min(Math.max(q[0],x[0]),x[1])))+'" cy="194" r="2.4" fill="none" stroke="'+st.s+'" stroke-width="1.4"/>');});
+    if(it.points.length&&!multi){var last=it.points[it.points.length-1];o.push('<text x="700" y="30" class="pv-last" text-anchor="end">'+E(Number(last[1]).toFixed(opt.decimals||0)+(opt.unit?" "+opt.unit:""))+"</text>");}
+    o.push("</g>");
+  });
+  if(multi){
+    o.push('<g class="pv-series-legend">');var w=G.pw/ss.length;
+    ss.forEach(function(it,j){var sx=G.pl+j*w,st=SLOT[it.slot]||SLOT.A,rs=runs(it.points),tx=it.label;tx+=rs.length?" · "+Number(rs[rs.length-1][rs[rs.length-1].length-1][1]).toFixed(opt.decimals||0)+" "+(opt.unit||""):" · "+T("ui.filter.noFrames").replace("{window}",state.filters.window);o.push('<line x1="'+num(sx)+'" y1="'+G.legendY+'" x2="'+num(sx+16)+'" y2="'+G.legendY+'" stroke="'+st.w+'" stroke-width="3"'+st.d+'/>','<text x="'+num(sx+22)+'" y="'+(G.legendY+4)+'" class="pv-legend"'+(rs.length?"":' opacity="0.55"')+">"+E(tx)+"</text>");});
+    o.push("</g>");
+  }
+  o.push("</svg>");fig.insertAdjacentHTML("afterbegin",o.join(""));
+}
+function days(p,k,b){
+  var bk={};
+  pts(p,k).forEach(function(q){
+    if(q[0]<b.lo||q[0]>b.hi||q[1]===null||!isFinite(q[1]))return;
+    var d=Math.floor(q[0]/D)*D;if(!bk[d])bk[d]=[];bk[d].push(q[1]);
+  });
+  return Object.keys(bk).map(Number).sort(function(a,b){return a-b;}).map(function(d){
+    var v=bk[d];return{day:d,median:med(v),low:Math.min.apply(null,v),high:Math.max.apply(null,v),frames:v.length};
+  });
+}
+function drawBars(card,panels,kind){
+  var fig=card.querySelector(".pv-figure");if(!fig)return;clear(fig);
+  var b=bd(state.filters),items=[];
+  panels.forEach(function(p,i){var d=days(p,"area_px",b);if(kind==="ch-gr-rate-bars")items.push({label:p.label,value:d.length>1?d[d.length-1].median-d[d.length-2].median:null,slot:"ABC"[i%3]});else d.forEach(function(x){items.push({label:iso(x.day).slice(5,10),value:x.median,low:x.low,high:x.high,slot:"ABC"[i%3]});});});
+  var vv=items.filter(function(x){return x.value!==null;}).map(function(x){return x.value;});
+  if(!vv.length){fig.insertAdjacentHTML("afterbegin",empty());return;}
+  vv.push(0);var y=yd(vv),ys=sc(y,[G.pt+G.ph,G.pt]),o=[frame(card,G.h)],zero=ys(0),w=G.pw/Math.max(1,items.length);
+  ticks(y[0],y[1]).forEach(function(v){o.push('<line x1="'+G.pl+'" y1="'+num(ys(v))+'" x2="'+(G.pl+G.pw)+'" y2="'+num(ys(v))+'" stroke="var(--pv-grid)"/>');});
+  items.forEach(function(it,i){if(it.value===null)return;var cx=G.pl+w*(i+.5),bw=Math.max(2,w*.62);o.push('<rect x="'+num(cx-bw/2)+'" y="'+num(Math.min(ys(it.value),zero))+'" width="'+num(bw)+'" height="'+num(Math.abs(ys(it.value)-zero)||1)+'" fill="'+((SLOT[it.slot]||SLOT.A).w)+'"/>');if(i%Math.max(1,Math.ceil(items.length/6))===0)o.push('<text x="'+num(cx)+'" y="'+G.xLabelY+'" class="pv-ax" text-anchor="middle">'+E(it.label)+"</text>");});
+
+  fig.insertAdjacentHTML("afterbegin",o.join(""));
+}
+function drawTable(card,panels){
+  var body=card.querySelector(".pv-tablewrap tbody");if(!body)return;
+  var b=bd(state.filters),rows=[];
+  panels.forEach(function(p){
+    var prev=null;
+    days(p,"area_px",b).forEach(function(d){
+      var dt=iso(d.day).slice(0,10),de=prev===null?null:d.median-prev;
+      rows.push("<tr><td>"+E(String(p.label).split(" · ")[0])+'</td><td>'+dt.slice(8,10)+"."+dt.slice(5,7)+'</td><td class="num">'+d.frames+'</td><td class="num">'+d.median.toFixed(0)+'</td><td class="num">'+d.low.toFixed(0)+'</td><td class="num">'+d.high.toFixed(0)+'</td><td class="num">'+(de===null?"—":(de>=0?"+":"")+de.toFixed(0))+"</td></tr>");
+      prev=d.median;
+    });
+  });
+  body.innerHTML=rows.length?rows.join(""):'<tr><td colspan="7" class="pv-empty">'+E(T("ui.filter.emptyWindow"))+"</td></tr>";
+}
+
+function active(f){f=f||state.filters;return !!f.crops||f.window!=="all"||f.agg!=="raw"||f.mode!=="abs";}
+function visibility(){
+  var sel=pick(),ps=(payload&&payload.panels)||[];
+  Array.prototype.forEach.call(document.querySelectorAll('.pv-card[data-filter-scope="hide"]'),function(card){
+    Array.prototype.forEach.call(card.querySelectorAll("[data-series]"),function(g){
+      var i=ps.findIndex(function(x){return x.label===g.getAttribute("data-label");});
+      g.style.display=i<0||sel.indexOf(ps[i])>=0?"":"none";
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.pv-card[data-filter-scope="all-panels"]'),function(card){
+    var h=card.querySelector(".pv-card-head"),c=card.querySelector(".pv-filter-chip");
+    if(active()&&h&&!c){c=document.createElement("span");c.className="pv-chip pv-filter-chip";c.setAttribute("data-state","info");c.textContent=T("ui.filter.aggregate");h.appendChild(c);}
+    else if(!active()&&c)c.parentNode.removeChild(c);
+  });
+}
+function cap(card,total,drawn){
+  var head=card.querySelector(".pv-card-head"),chip=card.querySelector(".pv-filter-chip");
+  if(total>drawn){
+    if(!chip){chip=document.createElement("span");chip.className="pv-chip pv-filter-chip";chip.setAttribute("data-state","warn");if(head)head.appendChild(chip);}
+    chip.textContent=T("ui.filter.capped").replace("{n}",total);
+  }else if(chip)chip.parentNode.removeChild(chip);
+}
+function renderAll(){
+  if(!payload)return;
+  Array.prototype.forEach.call(document.querySelectorAll('[data-render="client"]'),function(card){
+    var id=card.getAttribute("data-chart")||"",key=card.getAttribute("data-card-key")||"area_px",all=pick(),ps=all.slice(0,3),b=bd(state.filters);
+    if(id==="ch-gr-daily-table"){drawTable(card,ps);cap(card,all.length,ps.length);return;}
+    if(id==="ch-gr-rate-bars"||id==="ch-gr-daily-bars"){drawBars(card,ps,id);cap(card,all.length,ps.length);return;}
+    var s=((ps[0]||{}).series||{})[key]||{},list=ps.map(function(p,i){return{label:p.label,slot:"ABC"[i%3],panel:p,points:agg(p,key,state.filters,b)};});
+    drawLine(card,list,{key:key,unit:s.unit||"",decimals:s.decimals||0});
+    cap(card,all.length,ps.length);
+  });
+}
+function sync(){
+  var f=state.filters,all=N(),sel=f.crops||all,v=document.getElementById("pv-f-crop-val");
+  Array.prototype.forEach.call(document.querySelectorAll(".pv-crop-box"),function(b){b.checked=sel.indexOf(b.value)>=0;});
+  if(v)v.textContent=sel.length===all.length?T("ui.controls.cropAll"):sel.join(", ");
+  [["pv-f-window","window"],["pv-f-agg","agg"],["pv-f-mode","mode"]].forEach(function(p){var e=document.getElementById(p[0]);if(e)e.value=f[p[1]];});
+  var r=document.getElementById("pv-f-reset");if(r)r.disabled=!active(f);
+  var tab=(state.route&&state.route.tab)||"overview",sub=(state.route&&state.route.sub)||"",nt=tab==="alerts"||tab==="method";
+  var w=document.getElementById("pv-f-window"),a=document.getElementById("pv-f-agg"),m=document.getElementById("pv-f-mode");
+  if(w)w.disabled=nt;if(a)a.disabled=nt;if(m){m.disabled=sub==="rate"||sub==="daily";}
+}
+function note(){var el=document.getElementById("pv-filter-note");if(!el)return;var n=state.filters.notices||[];el.hidden=!n.length;el.textContent=n.length?T("ui.filter.invalid").replace("{token}",n[0]):"";}
+function applyFilters(f,route){
+  state.filters=f||def();
+  if(route)state.route={tab:route.tab,sub:route.sub,chart:route.chart};
+  if(!payload)return;
+  sync();visibility();renderAll();note();
+}
+
+function stats(a){
+  var v=a.filter(function(q){return q[1]!==null&&isFinite(q[1]);}).map(function(q){return Number(q[1]);});
+  if(!v.length)return null;
+  var s=v.slice().sort(function(x,y){return x-y;});
+  return{n:v.length,min:R6(s[0]),median:R6(med(v)),max:R6(s[s.length-1]),first:R6(v[0]),last:R6(v[v.length-1])};
+}
+function snapName(f){
+  var d=payload?new Date(payload.now):new Date(NaN),st=isFinite(d.getTime())?d.toISOString().replace(/[-:]/g,"").replace(/\.\d{3}Z$/,"Z"):"nodate";
+  var all=N(),sel=f.crops||all,slug=sel.length>=all.length?"all":sel.map(function(n){return String(n).toLowerCase().replace(/[^a-z0-9]+/g,"_");}).join("+");
+  return"pv-snapshot-"+st+"-"+slug+"-"+f.window+"-"+f.agg+"-"+f.mode+".json";
+}
+function buildSnap(){
+  var f=state.filters,b=bd(f),ps=pick(f),all=N(),sel=f.crops||all;
+  var panels=ps.map(function(p){
+    var s={},n=0;
+    ["area_px","area_cm2"].forEach(function(k){var a=pts(p,k).filter(function(q){return q[0]>=b.lo&&q[0]<=b.hi;}),st=stats(a),m=a.filter(function(q){return q[1]!==null&&isFinite(q[1]);});n=Math.max(n,a.length);s[k]={unit:((p.series||{})[k]||{}).unit||"",points:m.map(function(q){return[iso(q[0]),R6(q[1])];}),stats:st,index_first:st&&st.first>0?100:null,index_last:st&&st.first>0?R6(100*st.last/st.first):null,delta_pct:st&&st.first>0?R6(100*(st.last-st.first)/st.first):null};});
+    return{id:p.id,label:p.label,crop:p.crop,method:p.method,rows:p.rows,frames_in_window:n,state:n?"ok":"no-frames",series:s};
+  });
+  var cards=((payload&&payload.cards)||[]).map(function(c){var k=c.key||"area_px",bl=((panels[0]||{}).series||{})[k]||{};return{id:c.id,tab:c.tab,sub:c.sub,title_en:c.title_en,title_ru:c.title_ru,state:c.state,now_en:c.now_en,now_ru:c.now_ru,conclusion_en:c.conclusion_en,conclusion_ru:c.conclusion_ru,metrics:{last:(bl.stats||{}).last===undefined?null:bl.stats.last,unit:bl.unit||"",mode_value:bl.index_last}};});
+  var fr=(payload&&payload.frames)||[],sources=ps.map(function(p){var rs=fr.filter(function(r){return r.panel===p.id;}),a=rs[0]||{},z=rs[rs.length-1]||{};return{panel:p.id,csv:p.source,sha256_first:a.sha256||"",sha256_last:z.sha256||""};}),thumbs=[];
+  ps.forEach(function(p){var last=null;fr.forEach(function(r){if(r.panel===p.id&&r.total>0&&r.index===r.total-1)last=r;});if(last)thumbs.push({panel:p.id,frame_id:last.id,sha16:String(last.sha256||"").slice(0,16),with_mask:!!last.mask});});
+  return{schema:"pv-snapshot/1",generated_at:payload.now,now_source:payload.now_source,page:{build:payload.schema,lang:state.lang,renderer:"client",bytes_note:"summary only"},filters:{crops:sel,crop_state:sel.length>=all.length?"all":"subset",window:f.window,window_label:f.window,aggregation:f.agg,mode:f.mode},window:{start_ms:b.lo,end_ms:b.hi,start:iso(b.lo),end:iso(b.hi)},panels:panels,cards:cards,sources:sources,thumbnails:thumbs,thumbnail_state:thumbs.length?"embedded":"not built"};
+}
+function exportSnap(){
+  var text=stable(buildSnap()),name=snapName(state.filters),a=document.getElementById("pv-snap-text"),n=document.getElementById("pv-snap-name");
+  if(a)a.value=text;if(n)n.textContent=name;return{text:text,name:name};
+}
+function downloadSnap(){
+  var o=exportSnap(),blob=new Blob([o.text],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.download=o.name;a.href=url;document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},1000);
+}
+function copySnap(){
+  var a=document.getElementById("pv-snap-text");if(!a)return;
+  exportSnap();a.focus();a.select();try{document.execCommand("copy");}catch(e){}
+}
+
+function renderDiff(a,b){
+  var table=document.getElementById("pv-snap-table"),banner=document.getElementById("pv-snap-banner");if(!table)return;
+  var body=table.querySelector("tbody"),head=table.querySelector("thead");
+  if(!a||!b){if(body)body.innerHTML='<tr><td colspan="4">'+E(T("ui.snap.waiting"))+"</td></tr>";return;}
+  if(a.schema!=="pv-snapshot/1"||b.schema!=="pv-snapshot/1"){if(head)head.hidden=true;if(body)body.innerHTML='<tr><td colspan="4">'+E(T("ui.snap.badSchema"))+"</td></tr>";return;}
+  if(head)head.hidden=false;
+  if(banner){var fa=a.filters||{},fb=b.filters||{},diff=JSON.stringify(fa.crops)!==JSON.stringify(fb.crops)||fa.window!==fb.window||fa.aggregation!==fb.aggregation||fa.mode!==fb.mode;banner.hidden=!diff;banner.textContent=diff?T("ui.snap.filtersDiffer"):"";}
+  var left={},right={},skip=["generated_at","page","thumbnails"];flat(a,"",left,skip);flat(b,"",right,skip);
+  var paths=Object.keys(left).concat(Object.keys(right)).filter(function(p,i,l){return l.indexOf(p)===i;}).sort(),changed=[],sameN=0;
+  paths.forEach(function(p){
+    var ina=Object.prototype.hasOwnProperty.call(left,p),inb=Object.prototype.hasOwnProperty.call(right,p);
+    if(!ina||!inb){changed.push([p,ina?String(left[p]):T("ui.snap.onlyB"),inb?String(right[p]):T("ui.snap.onlyA"),T("ui.snap.notComputable")]);return;}
+    if(same(left[p],right[p])){sameN++;return;}
+    var d="",tag="";
+    if(typeof left[p]==="number"&&typeof right[p]==="number"){var x=right[p]-left[p];d=(x>=0?"+":"")+R6(x);tag=left[p]===0?T("ui.snap.notComputable"):(x>=0?"+":"")+R6(100*x/Math.abs(left[p]))+" %";}
+    changed.push([p,String(left[p]),String(right[p]),d+(tag?" ("+tag+")":"")]);
+  });
+  var rows=changed.map(function(r){var tone=r[3].indexOf("+")===0?"pv-pos":r[3].indexOf("-")===0?"pv-neg":"pv-ink";return"<tr><td>"+E(r[0])+"</td><td>"+E(r[1])+"</td><td>"+E(r[2])+'</td><td style="color:var(--'+tone+')">'+E(r[3])+"</td></tr>";});
+  if(!rows.length)rows.push('<tr><td colspan="4">'+E(T("ui.snap.empty"))+"</td></tr>");
+  if(body)body.innerHTML=rows.join("");
+}
+function readFiles(){
+  var a=document.getElementById("pv-snap-a"),b=document.getElementById("pv-snap-b"),store=readFiles.d||(readFiles.d={});
+  function read(input,key){
+    if(!input||!input.files||!input.files.length)return;
+    var r=new FileReader();
+    r.onload=function(){try{store[key]=JSON.parse(r.result);}catch(e){store[key]={schema:""};}renderDiff(store.a,store.b);};
+    r.readAsText(input.files[0]);
+  }
+  if(a)a.onchange=function(){read(a,"a");};
+  if(b)b.onchange=function(){read(b,"b");};
+}
+function openSnap(){
+  var d=document.getElementById("pv-snap"),bg=document.querySelector(".pv-snap-backdrop");if(!d)return;
+  exportSnap();d.hidden=false;if(bg)bg.hidden=false;
+}
+function closeSnap(){
+  var d=document.getElementById("pv-snap"),bg=document.querySelector(".pv-snap-backdrop");
+  if(d)d.hidden=true;if(bg)bg.hidden=true;
+  var o=document.getElementById("pv-f-snap");if(o)o.focus();
+}
+function initControls(){
+  try{
+    if(!payload)return;
+    var cb=document.getElementById("pv-f-crop"),pop=document.getElementById("pv-crop-pop"),nt=document.getElementById("pv-filter-note");
+    if(cb&&pop)cb.addEventListener("click",function(ev){ev.stopPropagation();var open=pop.hidden;pop.hidden=!open;cb.setAttribute("aria-expanded",open?"true":"false");});
+    Array.prototype.forEach.call(document.querySelectorAll(".pv-crop-box"),function(box){
+      box.addEventListener("change",function(){
+        var on=Array.prototype.filter.call(document.querySelectorAll(".pv-crop-box"),function(x){return x.checked;});
+        if(!on.length){box.checked=true;if(nt){nt.textContent=T("ui.filter.keepOne");nt.hidden=false;}return;}
+        var nm=on.map(function(x){return x.value;});
+        state.filters.crops=nm.length===N().length?null:N().filter(function(n){return nm.indexOf(n)>=0;});
+        state.filters.notices=[];commit();applyFilters(state.filters,state.route);
+      });
+    });
+    [["pv-f-window","window"],["pv-f-agg","agg"],["pv-f-mode","mode"]].forEach(function(p){
+      var s=document.getElementById(p[0]);if(s)s.addEventListener("change",function(){state.filters[p[1]]=s.value;state.filters.notices=[];commit();applyFilters(state.filters,state.route);});
+    });
+    var reset=document.getElementById("pv-f-reset");if(reset)reset.addEventListener("click",function(){state.filters=def();commit();applyFilters(state.filters,state.route);});
+    var snap=document.getElementById("pv-f-snap");if(snap)snap.addEventListener("click",openSnap);
+    var close=document.querySelector("[data-snap-close]");if(close)close.addEventListener("click",closeSnap);
+    Array.prototype.forEach.call(document.querySelectorAll("[data-snap-tab]"),function(btn){
+      btn.addEventListener("click",function(){
+        var want=btn.getAttribute("data-snap-tab");
+        Array.prototype.forEach.call(document.querySelectorAll("[data-snap-tab]"),function(o){o.setAttribute("aria-selected",o===btn?"true":"false");});
+        Array.prototype.forEach.call(document.querySelectorAll("[data-snap-pane]"),function(p){p.hidden=p.getAttribute("data-snap-pane")!==want;});
+      });
+    });
+    var dl=document.getElementById("pv-snap-dl");if(dl)dl.addEventListener("click",downloadSnap);
+    var cp=document.getElementById("pv-snap-copy");if(cp)cp.addEventListener("click",copySnap);
+    readFiles();
+    document.addEventListener("keydown",function(ev){
+      if(ev.key!=="Escape")return;
+      if(pop&&!pop.hidden){pop.hidden=true;if(cb){cb.setAttribute("aria-expanded","false");cb.focus();}return;}
+      var d=document.getElementById("pv-snap");if(d&&!d.hidden)closeSnap();
+    });
+  }catch(err){if(window.console&&window.console.log)window.console.log("dashboard filters disabled",err);}
+}
+initControls();
+"""
 
 
+JS: str = _JS_CORE.replace("/*__FILTER__*/", JS_FILTER)

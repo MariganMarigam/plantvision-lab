@@ -286,3 +286,82 @@ rm -f tests/test_dashboard_v2_model.py tests/test_dashboard_v2_charts.py \
   tests/test_dashboard_v2_html.py tests/test_build_report.py
 .venv/bin/pytest -q
 ```
+
+## Control bar
+
+The sticky top bar carries six controls before the language toggle:
+`[crop] [window] [aggregation] [mode] [reset] [snapshot] [EN]`.
+
+| Control | Values | Default | Applies to |
+|---|---|---|---|
+| crop | one checkbox per `payload.crops` entry | all | every tab |
+| window | `24h`, `7d`, `30d`, `all` | `all` | time-windowed cards |
+| aggregation | `raw`, `hourly`, `daily` | `raw` | line/area/bars and the daily table |
+| mode | `abs`, `idx`, `delta` | `abs` | line/area cards only |
+| reset | clears the four filters | disabled at defaults | every tab |
+| snapshot | opens Export / Diff | always enabled | every tab |
+
+The last checked crop cannot be unchecked. A selected panel with no frames in
+the window stays in the legend, muted, with its last-frame date.
+
+## Hash grammar
+
+```
+#/<tab>[/<sub>][~<chart-id>][!c=<crop>[,<crop>…]&w=<24h|7d|30d|all>&a=<raw|hourly|daily>&m=<abs|idx|delta>]
+```
+
+Filters are always last. Parsing strips `!` first, then `~`, then `/`; the
+page never rewrites an invalid hash, it renders sanitised defaults and shows
+`#pv-filter-note`. Canonical parameter order is `c, w, a, m`, defaults are
+omitted, and crop order follows `payload.crops`.
+
+Examples:
+
+| State | Hash |
+|---|---|
+| fresh page | `#/overview` |
+| growth, area-cm2, two crops, 7 days, hourly, index | `#/growth/area-cm2!c=basil,lettuce&w=7d&a=hourly&m=idx` |
+| same + drawer | `#/growth/area-cm2~ch-gr-area-cm2!c=basil,lettuce&w=7d&a=hourly&m=idx` |
+| crops drill-down for one panel | `#/crops/lettuce-farm03-exg` |
+| alerts, one crop, defaults for the rest | `#/alerts!c=lettuce` |
+
+## Snapshot schema and filename
+
+Snapshot export runs entirely in the browser and writes `pv-snapshot/1`:
+`schema, generated_at, now_source, page, filters, window, panels, cards,
+sources, thumbnails, thumbnail_state`. Panel series points are
+`[ISO-8601 Z string, number]`; `null` values are omitted but counted in
+`stats.missing`; floats are rounded to six decimals. The JSON is key-sorted and
+contains no SVG.
+
+Filename:
+
+```
+pv-snapshot-<YYYYMMDDTHHMMSSZ>-<cropslug>-<window>-<agg>-<mode>.json
+```
+
+`cropslug` is the selected crops in `payload.crops` order joined by `+` with
+spaces replaced by `_`, or `all`; the timestamp comes from `payload.now`, never
+the wall clock. Identical inputs produce byte-identical files.
+
+The Diff pane reads two files with `FileReader` (works from `file://`), rejects
+non-`pv-snapshot/1` input, banners a filter mismatch, and reports sorted
+per-metric `A | B | Δ` rows with `|Δ| ≤ 1e-9` collapsed as unchanged.
+
+## Byte budgets
+
+| Budget | Limit |
+|---|---|
+| page | 1 MiB, hard gate, exit 3 |
+| payload JSON | 240 kB, hard gate, exit 3 |
+| embedded frames | 300 kB, quality ladder 58 -> 45 -> drop |
+
+The page contains no `http://`, `https://`, `<link>`, `@import` or webfont, so
+it works from `file://`.
+
+## Static-growth fallback
+
+`--static-growth` (default) keeps the Python-rendered Growth SVG as the no-JS
+fallback; the client renderer replaces those nodes in place when JavaScript is
+available. `--no-static-growth` drops that fallback (the JS-required variant)
+and is verified separately.
