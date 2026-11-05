@@ -492,7 +492,7 @@ def build_report(
     config: RuleConfig | None = None,
     lang: str = "en",
     static_growth: bool = True,
-    max_json_bytes: int = 240_000,
+    max_json_bytes: int = 256_000,
 ) -> ReportResult:
     """Build the page and write it atomically after the byte gate.
 

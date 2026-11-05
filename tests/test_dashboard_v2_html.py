@@ -401,6 +401,7 @@ def test_snapshot_dialog_markup(page) -> None:
     assert 'id="pv-snap-a"' in html and 'id="pv-snap-b"' in html
     assert 'id="pv-snap-table"' in html
     assert html.count("data-snap-tab=") == 2
+    assert "data-snap-close>Close</button>" in html
 
 
 def test_last_frames_card_images(tmp_path: Path) -> None:

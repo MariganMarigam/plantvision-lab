@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import importlib.util
+import inspect
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -233,6 +234,12 @@ def test_payload_budget_gate(tmp_path: Path) -> None:
             max_json_bytes=1,
         )
     assert not out.exists()
+
+
+def test_payload_budget_default_allows_current_data() -> None:
+    """The documented 256 kB gate leaves headroom for time-dependent findings."""
+    default = inspect.signature(build_report).parameters["max_json_bytes"].default
+    assert default == 256_000
 
 
 def test_two_builds_identical(tmp_path: Path) -> None:

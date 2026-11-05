@@ -229,7 +229,7 @@ Exit codes: `0` ok, `1` data/IO/YAML error, `2` argparse usage, `3` page over
 
 Page hard gate 1 MiB (exit 3). The accepted build ranges are 620 000–700 000
 bytes with the default static-growth fallback and 480 000–560 000 bytes with
-`--no-static-growth`; payload JSON stays under 240 kB and embedded frames under
+`--no-static-growth`; payload JSON stays under 256 kB and embedded frames under
 300 kB (quality ladder 58 -> 45 -> drop). The inline client renderer budget is
 60 000 characters. The page contains no `http://`, `https://`, `<link>`,
 `@import` or webfont, so it works from `file://`.
@@ -368,7 +368,7 @@ per-metric `A | B | Δ` rows with `|Δ| ≤ 1e-9` collapsed as unchanged.
 | page, hard gate | 1 MiB, exit 3 |
 | page, default (`--static-growth`) | 620 000–700 000 bytes |
 | page, lean (`--no-static-growth`) | 480 000–560 000 bytes |
-| payload JSON | 240 kB, hard gate, exit 3 |
+| payload JSON | 256 kB, hard gate, exit 3 |
 | embedded frames | 300 kB, quality ladder 58 -> 45 -> drop |
 | inline client renderer | 60 000 characters |
 

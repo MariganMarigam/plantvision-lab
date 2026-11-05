@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -273,6 +276,56 @@ def test_snapshot_schema_keys_in_js() -> None:
         "thumbnails",
     ):
         assert key in layout.JS_FILTER
+
+
+_NODE = shutil.which("node")
+
+
+def _stable_js() -> str:
+    """The client-side key-sorting serialiser, extracted from the renderer."""
+    js = layout.JS
+    start = js.index("function stable(v,lvl){")
+    end = js.index("function flat(", start)
+    return js[start:end]
+
+
+@pytest.mark.skipif(_NODE is None, reason="node is required to run renderer JS")
+def test_snapshot_export_is_indented_and_deterministic() -> None:
+    """S1: exports are pretty-printed and byte-identical for one state."""
+    sample = {"z": None, "a": [3, {"d": 4, "c": 5}], "b": 1}
+    driver = (
+        _stable_js()
+        + "\nvar a=stable("
+        + json.dumps(sample)
+        + ");"
+        + "\nvar b=stable({b:1,a:[3,{c:5,d:4}],z:null});"
+        + "\nprocess.stdout.write(JSON.stringify({text:a,same:a===b}));"
+    )
+    result = subprocess.run(
+        [_NODE, "-e", driver],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    exported = json.loads(result.stdout)
+    assert exported["text"].startswith("{\n")
+    assert exported["text"] == json.dumps(sample, indent=2, sort_keys=True)
+    assert exported["same"] is True
+
+
+def test_snapshot_cards_reuse_the_filter_aware_join() -> None:
+    """S2: snapshot copy goes through the same joiner as the on-screen cards."""
+    js = layout.JS_FILTER
+    build = js[js.index("function buildSnap()") : js.index("function exportSnap()")]
+    assert 'joinField(c,"now",ps,allPanels)' in build
+    assert 'joinField(c,"conclusion",ps,allPanels)' in build
+
+
+def test_snapshot_close_label_is_short() -> None:
+    """S3: the dialog close control reads Close / Закрыть."""
+    assert TEXTS["en"]["ui.snap.close"] == "Close"
+    assert TEXTS["ru"]["ui.snap.close"] == "Закрыть"
 
 
 def _growth_card(payload, card_id: str = "ch-gr-area-px") -> dict[str, object]:

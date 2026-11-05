@@ -854,7 +854,7 @@ def snapshot_dialog(lang: str) -> str:
         '<div class="pv-snap-head">'
         + title
         + '<button type="button" class="pv-close" data-snap-close>'
-        + esc(_txt("ui.close", lang))
+        + esc(_txt("ui.snap.close", lang))
         + "</button></div>"
         '<div class="pv-snap-tabs" role="tablist">'
         f'<button type="button" class="pv-subtab" data-snap-tab="export" '
@@ -1524,10 +1524,19 @@ _JS_CORE = r"""
   function clear(fig){Array.prototype.forEach.call(fig.querySelectorAll("svg,.pv-tablewrap,.pv-empty"),function(n){n.parentNode.removeChild(n);});}
   function empty(t){return '<div class="pv-empty" role="note" data-state="not-measured"><p class="pv-empty-t">'+E(T("ui.filter.emptyWindow"))+"</p><p>"+E(t||T("ui.filter.emptyWindow"))+"</p></div>";}
 
-  function stable(v){
+  function stable(v,lvl){
+    var i=0,pad="";
+    lvl=lvl||0;
+    for(i=0;i<lvl;i++)pad+="  ";
     if(v===null||typeof v!=="object")return JSON.stringify(v);
-    if(Object.prototype.toString.call(v)==="[object Array]")return"["+v.map(stable).join(",")+"]";
-    return"{"+Object.keys(v).sort().map(function(k){return JSON.stringify(k)+":"+stable(v[k]);}).join(",")+"}";
+    var inner=pad+"  ";
+    if(Object.prototype.toString.call(v)==="[object Array]"){
+      if(!v.length)return"[]";
+      return"[\n"+v.map(function(x){return inner+stable(x,lvl+1);}).join(",\n")+"\n"+pad+"]";
+    }
+    var ks=Object.keys(v).sort();
+    if(!ks.length)return"{}";
+    return"{\n"+ks.map(function(k){return inner+JSON.stringify(k)+": "+stable(v[k],lvl+1);}).join(",\n")+"\n"+pad+"}";
   }
   function flat(v,p,out,skip){
     if(v===null||typeof v!=="object"){out[p]=v;return;}
@@ -1840,13 +1849,18 @@ function snapName(f){
   return"pv-snapshot-"+st+"-"+slug+"-"+f.window+"-"+f.agg+"-"+f.mode+".json";
 }
 function buildSnap(){
-  var f=state.filters,b=bd(f),ps=pick(f),all=N(),sel=f.crops||all;
+  var f=state.filters,b=bd(f),ps=pick(f),allPanels=(payload&&payload.panels)||[],all=N(),sel=f.crops||all;
   var panels=ps.map(function(p){
     var s={},n=0;
     ["area_px","area_cm2"].forEach(function(k){var a=pts(p,k).filter(function(q){return q[0]>=b.lo&&q[0]<=b.hi;}),st=stats(a),m=a.filter(function(q){return q[1]!==null&&isFinite(q[1]);});n=Math.max(n,a.length);s[k]={unit:((p.series||{})[k]||{}).unit||"",points:m.map(function(q){return[iso(q[0]),R6(q[1])];}),stats:st,index_first:st&&st.first>0?100:null,index_last:st&&st.first>0?R6(100*st.last/st.first):null,delta_pct:st&&st.first>0?R6(100*(st.last-st.first)/st.first):null};});
     return{id:p.id,label:p.label,crop:p.crop,method:p.method,rows:p.rows,frames_in_window:n,state:n?"ok":"no-frames",series:s};
   });
-  var cards=((payload&&payload.cards)||[]).map(function(c){var k=c.key||"area_px",bl=((panels[0]||{}).series||{})[k]||{};return{id:c.id,tab:c.tab,sub:c.sub,title_en:c.title_en,title_ru:c.title_ru,state:c.state,now_en:c.now_en,now_ru:c.now_ru,conclusion_en:c.conclusion_en,conclusion_ru:c.conclusion_ru,metrics:{last:(bl.stats||{}).last===undefined?null:bl.stats.last,unit:bl.unit||"",mode_value:bl.index_last}};});
+  var cards=((payload&&payload.cards)||[]).map(function(c){
+    var k=c.key||"area_px",bl=((panels[0]||{}).series||{})[k]||{},full=!!(c.filter&&c.filter.crop==="full"),
+        jn=full?joinField(c,"now",ps,allPanels):{en:c.now_en,ru:c.now_ru},
+        jc=full?joinField(c,"conclusion",ps,allPanels):{en:c.conclusion_en,ru:c.conclusion_ru};
+    return{id:c.id,tab:c.tab,sub:c.sub,title_en:c.title_en,title_ru:c.title_ru,state:c.state,now_en:jn.en,now_ru:jn.ru,conclusion_en:jc.en,conclusion_ru:jc.ru,metrics:{last:(bl.stats||{}).last===undefined?null:bl.stats.last,unit:bl.unit||"",mode_value:bl.index_last}};
+  });
   var fr=(payload&&payload.frames)||[],sources=ps.map(function(p){var rs=fr.filter(function(r){return r.panel===p.id;}),a=rs[0]||{},z=rs[rs.length-1]||{};return{panel:p.id,csv:p.source,sha256_first:a.sha256||"",sha256_last:z.sha256||""};}),thumbs=[];
   ps.forEach(function(p){var last=null;fr.forEach(function(r){if(r.panel===p.id&&r.total>0&&r.index===r.total-1)last=r;});if(last)thumbs.push({panel:p.id,frame_id:last.id,sha16:String(last.sha256||"").slice(0,16),with_mask:!!last.mask});});
   return{schema:"pv-snapshot/1",generated_at:payload.now,now_source:payload.now_source,page:{build:payload.schema,lang:state.lang,renderer:"client",bytes_note:"summary only"},filters:{crops:sel,crop_state:sel.length>=all.length?"all":"subset",window:f.window,window_label:f.window,aggregation:f.agg,mode:f.mode},window:{start_ms:b.lo,end_ms:b.hi,start:iso(b.lo),end:iso(b.hi)},panels:panels,cards:cards,sources:sources,thumbnails:thumbs,thumbnail_state:thumbs.length?"embedded":"not built"};
