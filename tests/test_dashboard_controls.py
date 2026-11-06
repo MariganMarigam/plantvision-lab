@@ -184,8 +184,10 @@ def test_renderer_enums_match_contract(payload) -> None:
 
 
 def test_renderer_js_budget() -> None:
-    assert len(layout.JS_FILTER) <= 60_000
-    assert len(layout.JS) <= 60_000
+    # Batch 1.6 moves the snapshot diff into the client renderer; the binding
+    # constraint is the 700 KB page gate, this cap only trips on real bloat.
+    assert len(layout.JS_FILTER) <= 45_000
+    assert len(layout.JS) <= 65_000
 
 
 def test_renderer_constants_in_js() -> None:

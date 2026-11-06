@@ -161,6 +161,38 @@ _UI_EN: dict[str, str] = {
     "ui.snap.path": "path",
     "ui.snap.delta": "Δ",
     "ui.snap.saved": "Snapshot ready",
+    "ui.snap.showAll": "show all {n}",
+    "ui.snap.raw": "Raw paths",
+    "ui.snap.rawCount": "Raw paths · {n} unchanged",
+    "ui.snap.kpi.area": "Area, last frame",
+    "ui.snap.kpi.scale": "Scale coverage",
+    "ui.snap.kpi.freshness": "Freshness",
+    "ui.snap.kpi.alerts": "Alerts",
+    "ui.snap.h.generated": "Generated",
+    "ui.snap.h.filters": "Filters",
+    "ui.snap.h.window": "Window",
+    "ui.snap.g.panels": "Panels",
+    "ui.snap.g.alerts": "Alerts",
+    "ui.snap.g.sources": "Sources",
+    "ui.snap.col.panel": "Panel",
+    "ui.snap.col.state": "Change",
+    "ui.snap.col.csv": "CSV",
+    "ui.snap.col.first": "First sha",
+    "ui.snap.col.last": "Last sha",
+    "ui.snap.col.frames": "Frames added",
+    "ui.snap.shaChanged": "changed",
+    "ui.snap.shaSame": "same",
+    "ui.snap.change.added": "added",
+    "ui.snap.change.removed": "removed",
+    "ui.snap.change.severity": "severity",
+    "ui.snap.change.value": "value",
+    "ui.snap.trend": "last 12",
+    "ui.scope.label": "Filters:",
+    "ui.scope.crop": "crop",
+    "ui.scope.window": "window",
+    "ui.scope.agg": "aggregation",
+    "ui.scope.mode": "mode",
+    "ui.board.showing": "Showing {n} of {total} panels",
     "ui.ov.lastchange": "Change since last frame",
     "ui.ov.thumbs": "Last frames",
 }
@@ -300,6 +332,38 @@ _UI_RU: dict[str, str] = {
     "ui.snap.path": "путь",
     "ui.snap.delta": "Δ",
     "ui.snap.saved": "Снимок готов",
+    "ui.snap.showAll": "показать все {n}",
+    "ui.snap.raw": "Исходные пути",
+    "ui.snap.rawCount": "Исходные пути · без изменений: {n}",
+    "ui.snap.kpi.area": "Площадь, последний кадр",
+    "ui.snap.kpi.scale": "Покрытие масштаба",
+    "ui.snap.kpi.freshness": "Свежесть",
+    "ui.snap.kpi.alerts": "Тревоги",
+    "ui.snap.h.generated": "Собрано",
+    "ui.snap.h.filters": "Фильтры",
+    "ui.snap.h.window": "Окно",
+    "ui.snap.g.panels": "Панели",
+    "ui.snap.g.alerts": "Тревоги",
+    "ui.snap.g.sources": "Источники",
+    "ui.snap.col.panel": "Панель",
+    "ui.snap.col.state": "Изменение",
+    "ui.snap.col.csv": "CSV",
+    "ui.snap.col.first": "Первый sha",
+    "ui.snap.col.last": "Последний sha",
+    "ui.snap.col.frames": "Добавлено кадров",
+    "ui.snap.shaChanged": "изменён",
+    "ui.snap.shaSame": "тот же",
+    "ui.snap.change.added": "добавлено",
+    "ui.snap.change.removed": "удалено",
+    "ui.snap.change.severity": "важность",
+    "ui.snap.change.value": "значение",
+    "ui.snap.trend": "последние 12",
+    "ui.scope.label": "Фильтры:",
+    "ui.scope.crop": "культура",
+    "ui.scope.window": "окно",
+    "ui.scope.agg": "агрегация",
+    "ui.scope.mode": "режим",
+    "ui.board.showing": "Показаны {n} из {total} панелей",
     "ui.ov.lastchange": "Изменение с последнего кадра",
     "ui.ov.thumbs": "Последние кадры",
 }
@@ -934,7 +998,22 @@ FRAGMENT_CARDS: frozenset[str] = frozenset(
         "ch-gr-rate-bars",
         "ch-gr-daily-bars",
         "ch-gr-daily-table",
+        "ch-ov-kpi-rings",
+        "ch-ov-frames-bars",
+        "ch-ov-status-board",
     }
+)
+
+# Action-line filtering predates the Overview fragments: the Growth cards carry
+# it, the Overview ones keep their static advice (no per-panel actions needed).
+_DO_FRAGMENT_CARDS: frozenset[str] = frozenset(
+    card_id for card_id in FRAGMENT_CARDS if not card_id.startswith("ch-ov-")
+)
+
+# Overview copy fragments carry the panel label as a prefix because their
+# templates are label-less value lists (unlike the Growth per-panel lines).
+_LABELLED_FRAGMENT_CARDS: frozenset[str] = frozenset(
+    card_id for card_id in FRAGMENT_CARDS if card_id.startswith("ch-ov-")
 )
 
 # Conclusions that decompose into one sentence per panel (line/bar cards); the
@@ -1668,17 +1747,51 @@ def _card_thresholds(card_id: str) -> list[dict[str, str]]:
 def _sub_payload(
     payload: dict[str, object], panel: dict[str, object]
 ) -> dict[str, object]:
-    """Project a payload onto one panel for per-panel fragment formatting."""
+    """Project a payload onto one panel for per-panel fragment formatting.
+
+    Totals, the calendar and the frame records are narrowed to the panel so a
+    per-panel sentence never quotes another store's dates or frames.
+    """
     out = dict(payload)
+    panel_id = str(panel.get("id", ""))
     out["panels"] = [panel]
     out["findings"] = [
         finding
         for finding in _findings(payload)
-        if finding.get("panel") == panel.get("id")
+        if finding.get("panel") == panel_id
     ]
     totals = dict(payload.get("totals") or {})
     totals["days"] = int(panel.get("days", totals.get("days", 0)) or 0)
+    totals["rows"] = int(panel.get("rows", totals.get("rows", 0)) or 0)
+    totals["panels"] = 1
+    totals["first_at"] = str(panel.get("first_at") or totals.get("first_at") or "")
+    totals["last_at"] = str(panel.get("last_at") or totals.get("last_at") or "")
     out["totals"] = totals
+    calendar = payload.get("calendar")
+    if isinstance(calendar, dict):
+        rows = [
+            row
+            for row in calendar.get("rows", []) or []
+            if isinstance(row, dict) and row.get("panel") == panel_id
+        ]
+        days = 0
+        if rows:
+            days = sum(
+                1
+                for cell in rows[0].get("cells", []) or []
+                if int(cell.get("frames", 0) or 0) > 0
+            )
+        projected = dict(calendar)
+        projected["rows"] = rows
+        projected["days"] = days
+        out["calendar"] = projected
+    records = payload.get("frames")
+    if isinstance(records, list):
+        out["frames"] = [
+            record
+            for record in records
+            if isinstance(record, dict) and record.get("panel") == panel_id
+        ]
     return out
 
 
@@ -1837,10 +1950,15 @@ def _fragment(
     """Formatted per-panel ``now``/``conclusion`` fragment for one card."""
     sub = _sub_payload(payload, panel)
     if field == "conclusion" and card_id in PER_PANEL_CONCLUSION:
-        return str(_values(card_id, sub, lang).get("per_panel") or "")
-    if field == "conclusion":
-        return conclusion(card_id, sub, lang)
-    return _now_text(card_id, sub, lang)
+        text = str(_values(card_id, sub, lang).get("per_panel") or "")
+    elif field == "conclusion":
+        text = conclusion(card_id, sub, lang)
+    else:
+        text = _now_text(card_id, sub, lang)
+    if card_id in _LABELLED_FRAGMENT_CARDS:
+        label = str(panel.get("label", ""))
+        return f"{label}: {text}" if label else text
+    return text
 
 
 def _panel_fragments(
@@ -1914,7 +2032,10 @@ def join_fragments(
         if isinstance(template_map, dict)
         else "{parts}"
     )
-    return template.replace("{parts}", "; ".join(parts))
+    body = template.replace("{parts}", "; ".join(part.rstrip(".") for part in parts))
+    if body and not body.endswith("."):
+        body += "."
+    return body
 
 
 def cards_for_payload(payload: dict[str, object]) -> list[dict[str, object]]:
@@ -1997,10 +2118,10 @@ def cards_for_payload(payload: dict[str, object]) -> list[dict[str, object]]:
                         "en": TEXTS["en"]["ui.do.ok"],
                         "ru": TEXTS["ru"]["ui.do.ok"],
                     }
-                    if card.id in FRAGMENT_CARDS
+                    if card.id in _DO_FRAGMENT_CARDS
                     else {}
                 ),
-                "do_actions": do_actions if card.id in FRAGMENT_CARDS else {},
+                "do_actions": do_actions if card.id in _DO_FRAGMENT_CARDS else {},
                 "conclusion_en": _fill(
                     TEXTS["en"][f"{card.id}.conclusion"], values_en
                 ),

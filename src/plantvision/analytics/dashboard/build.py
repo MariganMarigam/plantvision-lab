@@ -8,6 +8,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import combinations
 from pathlib import Path
 from typing import Sequence
 
@@ -133,6 +134,92 @@ def _weighted(average: float | None, weight: int, total: int, accumulated: float
     if average is None or total <= 0:
         return accumulated
     return accumulated + average * weight
+
+
+def _round6(value: float | None) -> float | None:
+    """Round one ring value at the source; ``None`` stays unknown."""
+    return None if value is None else round(float(value), 6)
+
+
+def ring_values(panels: Sequence[dict[str, object]]) -> dict[str, float | None]:
+    """Four Overview ring values for one panel subset.
+
+    Uses the weighted aggregate shared by the static markup: scale and shape
+    are row-weighted, freshness is the worst panel, pressure is derived from
+    the alert counts per row.
+
+    Args:
+        panels: Panel payload blocks in config order.
+
+    Returns:
+        ``{"scale", "freshness", "pressure", "shape"}``; ``None`` when the
+        subset carries no measurement for that ring.
+    """
+    rows_total = sum(int(panel.get("rows", 0)) for panel in panels)
+    scale = 0.0
+    shape = 0.0
+    shape_weight = 0
+    freshness: float | None = None
+    for panel in panels:
+        kpi = panel.get("kpi") if isinstance(panel.get("kpi"), dict) else {}
+        weight = int(panel.get("rows", 0))
+        scale = _weighted(kpi.get("scale_pct"), weight, rows_total, scale)
+        if kpi.get("shape_pct") is not None:
+            shape = _weighted(kpi.get("shape_pct"), weight, rows_total, shape)
+            shape_weight += weight
+        value = kpi.get("freshness_pct")
+        if value is not None and (freshness is None or value < freshness):
+            freshness = float(value)
+    scale_value = 100.0 * scale / rows_total if rows_total else None
+    shape_value = 100.0 * shape / shape_weight if shape_weight else None
+    critical = sum(int(panel.get("alerts", {}).get("critical", 0)) for panel in panels)
+    warn = sum(int(panel.get("alerts", {}).get("warn", 0)) for panel in panels)
+    pressure = (
+        100.0 * (1.0 - (3 * critical + warn) / (3 * max(1, rows_total)))
+        if rows_total
+        else None
+    )
+    return {
+        "scale": _round6(scale_value),
+        "freshness": _round6(freshness),
+        "pressure": _round6(pressure),
+        "shape": _round6(shape_value),
+    }
+
+
+def ring_sets(
+    panels: Sequence[dict[str, object]],
+) -> dict[str, dict[str, float | None]]:
+    """Precompute the rings for every non-empty crop subset.
+
+    Keys are the subset's panel ids joined with ``+`` in config order (the
+    order the client derives from the crop filter), so the client only has to
+    look a value up. With three crops this is ``2**3 - 1 == 7`` entries.
+
+    Args:
+        panels: Panel payload blocks in config order.
+
+    Returns:
+        ``{panel-id+panel-id: ring_values(...)}`` for every crop combination.
+    """
+    crops: list[str] = []
+    for panel in panels:
+        crop = str(panel.get("crop") or "").strip()
+        if crop and crop not in crops:
+            crops.append(crop)
+    result: dict[str, dict[str, float | None]] = {}
+    for size in range(1, len(crops) + 1):
+        for combo in combinations(crops, size):
+            subset = [
+                panel
+                for panel in panels
+                if str(panel.get("crop") or "").strip() in combo
+            ]
+            if not subset:
+                continue
+            key = "+".join(str(panel.get("id", "")) for panel in subset)
+            result[key] = ring_values(subset)
+    return result
 
 
 def _svg_for(
@@ -266,38 +353,15 @@ def _svg_for(
             )
             continue
         if kind == "rings":
-            rows_total = sum(int(panel.get("rows", 0)) for panel in panels)
-            scale = 0.0
-            shape = 0.0
-            shape_weight = 0
-            freshness: float | None = None
-            for panel in panels:
-                kpi = panel.get("kpi") if isinstance(panel.get("kpi"), dict) else {}
-                weight = int(panel.get("rows", 0))
-                scale = _weighted(kpi.get("scale_pct"), weight, rows_total, scale)
-                if kpi.get("shape_pct") is not None:
-                    shape = _weighted(kpi.get("shape_pct"), weight, rows_total, shape)
-                    shape_weight += weight
-                value = kpi.get("freshness_pct")
-                if value is not None and (freshness is None or value < freshness):
-                    freshness = float(value)
-            scale_value = 100.0 * scale / rows_total if rows_total else None
-            shape_value = 100.0 * shape / shape_weight if shape_weight else None
-            critical = sum(int(panel.get("alerts", {}).get("critical", 0)) for panel in panels)
-            warn = sum(int(panel.get("alerts", {}).get("warn", 0)) for panel in panels)
-            pressure = (
-                100.0 * (1.0 - (3 * critical + warn) / (3 * max(1, rows_total)))
-                if rows_total
-                else None
-            )
-            ring_values = (
-                ("scale", scale_value),
-                ("freshness", freshness),
-                ("pressure", pressure),
-                ("shape", shape_value),
+            values = ring_values(panels)
+            ring_values_seq = (
+                ("scale", values["scale"]),
+                ("freshness", values["freshness"]),
+                ("pressure", values["pressure"]),
+                ("shape", values["shape"]),
             )
             fragments: list[str] = []
-            for key, value in ring_values:
+            for key, value in ring_values_seq:
                 label_en = TEXTS["en"][f"ui.ring.{key}"]
                 label_ru = TEXTS["ru"][f"ui.ring.{key}"]
                 active_label = label_en if lang == "en" else label_ru
@@ -529,6 +593,7 @@ def build_report(
         raise ValueError("max_bytes must be positive")
     rows_by_panel = {panel.id: load_rows(panel.csv_path) for panel in panels}
     payload = build_payload(panels, now=now, title=title, config=config)
+    payload["overview"] = {"ring_sets": ring_sets(payload["panels"])}
     assets, records = _frame_assets(
         panels,
         rows_by_panel,

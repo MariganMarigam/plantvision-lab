@@ -309,12 +309,24 @@ top bar stays unclipped at 1280 and 1440.
 The last checked crop cannot be unchecked. A selected panel with no frames in
 the window stays in the legend, muted, with its last-frame date.
 
-Growth card copy follows the crop filter. The payload carries `now_parts` and
-`conclusion_parts` keyed by panel id plus `now_join` / `conclusion_join`
-templates; the client joins only the selected panels in config order. With all
-crops selected the precomputed sentence is rendered unchanged. The `do` line
-switches to `ui.do.ok` when every selected panel is healthy and to the
-rule-specific action when any selected panel is critical.
+Growth and Overview card copy follows the crop filter. The payload carries
+`now_parts` and `conclusion_parts` keyed by panel id plus `now_join` /
+`conclusion_join` templates; the client joins only the selected panels in
+config order. With all crops selected the precomputed sentence is rendered
+unchanged. The `do` line switches to `ui.do.ok` when every selected panel is
+healthy and to the rule-specific action when any selected panel is critical.
+
+Overview is subset-aware without client arithmetic: `build.py` precomputes
+`payload.overview.ring_sets` for every non-empty crop subset (keyed by panel ids
+joined with `+` in config order, `2^n - 1` entries) and the client swaps the
+four rings, their threshold colour and centre text from that lookup. The status
+board hides rows for unselected panels, its footer counts the visible rows, and
+the frames-per-day chart redraws grouped bars, legend and slots from
+`panels[].daily` for the selected panels only.
+
+A muted scope line under the top bar reads `Filters: crop · window ·
+aggregation · mode`; filters the current tab ignores are struck through. It is
+rendered from `labels.scope` and refreshed on every route/language change.
 
 ## Hash grammar
 
@@ -341,11 +353,13 @@ Examples:
 
 Snapshot export runs entirely in the browser and writes `pv-snapshot/1`:
 `schema, generated_at, now_source, page, filters, window, panels, cards,
-sources, thumbnails, thumbnail_state`. `generated_at` and every `now` value are
-UTC ISO-8601 strings ending in `Z` (never `+00:00`). Panel series points are
-`[ISO-8601 Z string, number]`; `null` values are omitted but counted in
-`stats.missing`; floats are rounded to six decimals. The JSON is key-sorted and
-contains no SVG.
+findings, sources, thumbnails, thumbnail_state`. `generated_at` and every `now`
+value are UTC ISO-8601 strings ending in `Z` (never `+00:00`). Panel series
+points are `[ISO-8601 Z string, number]`; `null` values are omitted but counted
+in `stats.missing`; floats are rounded to six decimals. Each panel also carries
+its `kpi` block and alert counts, and `findings` is a sorted `panel | rule_id |
+severity | value | threshold` list so two exports can be diffed. The JSON is
+key-sorted and contains no SVG.
 
 Filename:
 
@@ -358,8 +372,15 @@ spaces replaced by `_`, or `all`; the timestamp comes from `payload.now`, never
 the wall clock. Identical inputs produce byte-identical files.
 
 The Diff pane reads two files with `FileReader` (works from `file://`), rejects
-non-`pv-snapshot/1` input, banners a filter mismatch, and reports sorted
-per-metric `A | B | Δ` rows with `|Δ| ≤ 1e-9` collapsed as unchanged.
+non-`pv-snapshot/1` input and banners a filter mismatch. It renders structured
+blocks instead of a flat path list: header (generated, filters, window), four
+KPI delta cards (area, scale coverage, freshness, alerts), a per-panel table
+with A, B, Δ, Δ % and a 12-point sparkline, an alert diff keyed by
+`panel|rule_id` (`added`, `removed`, `severity`, `value`), and a sources table
+(csv, first/last sha, frames added). A is coral, B is violet. Blocks with no
+rows are omitted, each block shows at most eight rows behind a “show all”
+button, and the old per-path table stays available as the collapsed
+`Raw paths` details together with the unchanged-path count.
 
 ## Byte budgets
 
@@ -370,7 +391,7 @@ per-metric `A | B | Δ` rows with `|Δ| ≤ 1e-9` collapsed as unchanged.
 | page, lean (`--no-static-growth`) | 480 000–560 000 bytes |
 | payload JSON | 256 kB, hard gate, exit 3 |
 | embedded frames | 300 kB, quality ladder 58 -> 45 -> drop |
-| inline client renderer | 60 000 characters |
+| inline client renderer | 65 000 characters |
 
 The page contains no `http://`, `https://`, `<link>`, `@import` or webfont, so
 it works from `file://`.
