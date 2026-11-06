@@ -194,12 +194,15 @@ a:hover{text-decoration:underline}
 """.replace("FONT_STACK", FONT_STACK)
 
 CONTROL_CSS: str = """
-.pv-controls{display:flex;align-items:center;gap:6px;min-width:0;overflow-x:auto;scrollbar-width:none}
+.pv-controls{display:flex;align-items:center;gap:6px;min-width:0;overflow:visible;scrollbar-width:none}
 .pv-ctl{display:inline-flex;align-items:center;gap:5px;min-height:32px;padding:4px 9px;border:1px solid rgba(251,196,144,.35);border-radius:var(--pv-r-ctrl);background:var(--pv-card-2);color:var(--pv-ink);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
 .pv-ctl:hover{border-color:var(--pv-a1);background:#3d3670}.pv-ctl:disabled,.pv-ctl[aria-disabled=true]{opacity:.5;cursor:not-allowed}
 .pv-ctl-val{color:var(--pv-a1);font-weight:600}
-.pv-pop{position:absolute;z-index:40;margin-top:6px;padding:10px;min-width:220px;background:var(--pv-card-2);border:1px solid rgba(251,196,144,.35);border-radius:var(--pv-r-card)}
-.pv-pop label{display:flex;gap:8px;align-items:center;padding:6px 4px;min-height:32px;cursor:pointer}.pv-pop input{width:16px;height:16px;accent-color:var(--pv-a0)}
+.pv-pop-wrap{position:relative;display:inline-flex;min-width:0;flex:0 0 auto}
+.pv-pop{position:absolute;top:calc(100% + 6px);left:0;z-index:40;padding:10px;min-width:220px;background:var(--pv-card-2);border:1px solid rgba(251,196,144,.35);border-radius:var(--pv-r-card)}
+.pv-pop-list{max-height:min(60vh, 420px);overflow:auto}
+.pv-pop-done{display:flex;justify-content:center;width:100%;margin-top:8px}
+.pv-pop label{display:flex;gap:8px;align-items:center;padding:6px 4px;min-height:32px;cursor:pointer}.pv-pop input{width:16px;height:16px;accent-color:var(--pv-a0)}.pv-pop label .pv-zero{margin-left:auto}
 .pv-note{grid-column:1/-1;font-size:12px;color:var(--pv-a1)}.pv-note[hidden]{display:none}
 .pv-fresh{display:inline-flex;gap:4px;align-items:center;padding:2px 7px;border-radius:999px;font-size:11px}
 .pv-fresh[data-state=fresh]{background:rgba(47,227,167,.16);color:var(--pv-pos)}.pv-fresh[data-state=warn]{background:rgba(251,196,144,.16);color:var(--pv-a1)}.pv-fresh[data-state=stale]{background:rgba(245,112,94,.16);color:var(--pv-neg)}
@@ -208,8 +211,8 @@ CONTROL_CSS: str = """
 .pv-snap[hidden],.pv-snap-backdrop[hidden]{display:none}
 .pv-snap textarea{width:100%;min-height:160px;font:12px/1.4 ui-monospace,monospace;background:var(--pv-bg);color:var(--pv-ink);border:1px solid var(--pv-grid);padding:8px}
 .pv-framegrid{display:flex;flex-wrap:wrap;gap:8px}.pv-frame{border:0;padding:0;background:transparent;cursor:pointer}.pv-frame img{width:100%;height:auto}
-@media (max-width:899px){.pv-topbar{flex-wrap:wrap;overflow-x:clip}.pv-actions{flex:1 1 100%;margin-left:0;flex-wrap:wrap;min-width:0;max-width:100%}.pv-controls{order:3;flex:0 1 100%;width:100%;max-width:100%;overflow-x:auto;scroll-snap-type:x proximity}.pv-ctl,.pv-lang,.pv-subtab{min-height:44px;min-width:44px}.pv-pop label{min-height:44px}.pv-pop input{width:20px;height:20px}}
-@media (max-width:599px){.pv-pop{position:fixed;left:0;right:0;bottom:0;border-radius:var(--pv-r-card) var(--pv-r-card) 0 0}}
+@media (max-width:899px){.pv-topbar{flex-wrap:wrap;overflow-x:clip}.pv-actions{flex:1 1 100%;margin-left:0;flex-wrap:wrap;min-width:0;max-width:100%}.pv-controls{order:3;flex:0 1 100%;width:100%;max-width:100%;overflow:visible;flex-wrap:wrap}.pv-ctl,.pv-lang,.pv-subtab{min-height:44px;min-width:44px}.pv-pop label{min-height:44px}.pv-pop input{width:20px;height:20px}}
+@media (max-width:599px){.pv-topbar{backdrop-filter:none}.pv-pop{position:fixed;left:0;right:0;top:auto;bottom:0;max-height:70vh;border-radius:var(--pv-r-card) var(--pv-r-card) 0 0}}
 @media print{.pv-controls,.pv-snap,.pv-snap-backdrop{display:none!important}}
 """
 CSS = CSS + CONTROL_CSS
@@ -764,10 +767,29 @@ def controls(payload: dict[str, object], lang: str) -> str:
             f'value="{esc(name)}" checked>'
             f'<span>{esc(name)}</span><span class="pv-zero">{count}</span></label>'
         )
+    done = _leaf(
+        "button",
+        TEXTS["en"]["ui.controls.done"],
+        TEXTS["ru"]["ui.controls.done"],
+        lang,
+        attrs=' type="button" id="pv-crop-done"',
+        cls="pv-ctl pv-ctl-btn pv-pop-done",
+    )
     popover = (
-        f'<div id="pv-crop-pop" class="pv-pop" hidden role="group" '
-        f'aria-label="{esc(_txt("ui.controls.cropHint", lang))}">'
+        f'<div id="pv-crop-pop" class="pv-pop" hidden role="dialog" '
+        f'aria-label="{esc(_txt("ui.controls.crop", lang))}">'
+        '<div class="pv-pop-list">'
         + "".join(rows)
+        + "</div>"
+        + done
+        + "</div>"
+    )
+    crop_filter = (
+        '<div class="pv-pop-wrap">'
+        f'<button type="button" id="pv-f-crop" class="pv-ctl" aria-expanded="false" '
+        f'aria-haspopup="true" aria-controls="pv-crop-pop">'
+        f"{crop_label}{crop_value}</button>"
+        + popover
         + "</div>"
     )
     windows = _select(
@@ -824,9 +846,7 @@ def controls(payload: dict[str, object], lang: str) -> str:
     )
     return (
         '<div class="pv-controls" role="group" aria-label="Filters">'
-        f'<button type="button" id="pv-f-crop" class="pv-ctl" aria-expanded="false" '
-        f'aria-controls="pv-crop-pop">{crop_label}{crop_value}</button>'
-        + popover
+        + crop_filter
         + windows
         + aggs
         + modes
@@ -1924,14 +1944,45 @@ function initControls(){
   try{
     if(!payload)return;
     var cb=document.getElementById("pv-f-crop"),pop=document.getElementById("pv-crop-pop"),nt=document.getElementById("pv-filter-note");
-    if(cb&&pop)cb.addEventListener("click",function(ev){ev.stopPropagation();var open=pop.hidden;pop.hidden=!open;cb.setAttribute("aria-expanded",open?"true":"false");});
+    function placeCropPop(){
+      if(!pop||pop.hidden)return;
+      pop.style.left="";pop.style.right="";pop.style.top="";pop.style.bottom="";
+      if(window.matchMedia&&window.matchMedia("(max-width:599px)").matches)return;
+      var r=pop.getBoundingClientRect();
+      if(r.right>window.innerWidth-8){pop.style.left="auto";pop.style.right="0";r=pop.getBoundingClientRect();}
+      if(r.left<8){pop.style.right="auto";pop.style.left="0";}
+      if(r.top<8){pop.style.top="calc(100% + 6px)";pop.style.bottom="auto";}
+    }
+    function openCropPop(){
+      if(!cb||!pop)return;
+      pop.hidden=false;cb.setAttribute("aria-expanded","true");placeCropPop();
+    }
+    function closeCropPop(){
+      if(!pop)return;
+      pop.hidden=true;if(cb)cb.setAttribute("aria-expanded","false");
+    }
+    if(cb&&pop)cb.addEventListener("click",function(ev){
+      ev.stopPropagation();
+      if(pop.hidden)openCropPop();else closeCropPop();
+    });
+    if(cb&&pop)document.addEventListener("pointerdown",function(ev){
+      if(pop.hidden)return;
+      var t=ev.target;
+      if(pop.contains(t)||cb.contains(t))return;
+      closeCropPop();
+    });
+    var done=document.getElementById("pv-crop-done");
+    if(done)done.addEventListener("click",function(){closeCropPop();if(cb)cb.focus();});
+    if(typeof window.addEventListener==="function")window.addEventListener("resize",placeCropPop);
     Array.prototype.forEach.call(document.querySelectorAll(".pv-crop-box"),function(box){
       box.addEventListener("change",function(){
+        var wasOpen=!!(pop&&!pop.hidden);
         var on=Array.prototype.filter.call(document.querySelectorAll(".pv-crop-box"),function(x){return x.checked;});
         if(!on.length){box.checked=true;if(nt){nt.textContent=T("ui.filter.keepOne");nt.hidden=false;}return;}
         var nm=on.map(function(x){return x.value;});
         state.filters.crops=nm.length===N().length?null:N().filter(function(n){return nm.indexOf(n)>=0;});
         state.filters.notices=[];commit();applyFilters(state.filters,state.route);
+        if(wasOpen&&pop){pop.hidden=false;if(cb)cb.setAttribute("aria-expanded","true");box.focus();}
       });
     });
     [["pv-f-window","window"],["pv-f-agg","agg"],["pv-f-mode","mode"]].forEach(function(p){
@@ -1952,7 +2003,7 @@ function initControls(){
     readFiles();
     document.addEventListener("keydown",function(ev){
       if(ev.key!=="Escape")return;
-      if(pop&&!pop.hidden){pop.hidden=true;if(cb){cb.setAttribute("aria-expanded","false");cb.focus();}return;}
+      if(pop&&!pop.hidden){closeCropPop();if(cb)cb.focus();return;}
       var d=document.getElementById("pv-snap");if(d&&!d.hidden)closeSnap();
     });
   }catch(err){if(window.console&&window.console.log)window.console.log("dashboard filters disabled",err);}

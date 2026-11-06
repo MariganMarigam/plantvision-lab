@@ -218,6 +218,57 @@ def test_control_css_classes_present() -> None:
         assert name in layout.CONTROL_CSS
 
 
+def test_crop_popover_wrapper_is_positioned_relative() -> None:
+    css = layout.CONTROL_CSS
+    assert ".pv-pop-wrap{position:relative" in css
+    assert "top:calc(100% + 6px);left:0" in css
+
+
+def test_crop_popover_list_scrolls() -> None:
+    assert (
+        ".pv-pop-list{max-height:min(60vh, 420px);overflow:auto}"
+        in layout.CONTROL_CSS
+    )
+
+
+def test_crop_popover_clamps_to_viewport() -> None:
+    js = layout.JS_FILTER
+    assert "r.right>window.innerWidth-8" in js
+    assert 'pop.style.left="auto"' in js
+    assert 'pop.style.right="0"' in js
+
+
+def test_crop_popover_dismisses_on_outside_pointerdown() -> None:
+    js = layout.JS_FILTER
+    marker = 'document.addEventListener("pointerdown"'
+    assert marker in js
+    handler = js.split(marker, 1)[1][:700]
+    assert "pop.contains(t)" in handler
+    assert "cb.contains(t)" in handler
+    assert "closeCropPop()" in handler
+
+
+def test_crop_done_button_exists_in_both_languages(payload) -> None:
+    assert TEXTS["en"]["ui.controls.done"] == "Done"
+    assert TEXTS["ru"]["ui.controls.done"] == "Готово"
+    english = layout.controls(payload, "en")
+    russian = layout.controls(payload, "ru")
+    assert 'id="pv-crop-done"' in english
+    assert 'id="pv-crop-done"' in russian
+    assert 'data-en="Done"' in english and 'data-ru="Готово"' in english
+    assert ">Done</button>" in english
+    assert ">Готово</button>" in russian
+
+
+def test_crop_popover_dialog_role_and_label(doc: str) -> None:
+    match = re.search(r'<div id="pv-crop-pop".*?>', doc)
+    assert match is not None
+    tag = match.group(0)
+    assert 'role="dialog"' in tag
+    assert 'aria-label="crop"' in tag
+    assert 'aria-haspopup="true"' in doc
+
+
 def test_new_ui_keys_present_in_both_langs() -> None:
     prefixes = ("ui.controls.", "ui.filter.", "ui.fresh.", "ui.snap.", "ui.ov.")
     added = {
