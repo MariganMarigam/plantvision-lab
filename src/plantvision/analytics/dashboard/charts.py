@@ -898,6 +898,14 @@ def _ring_stroke(value: float) -> str:
     return "url(#pv-grad-a)"
 
 
+def _ring_pct(value: float) -> str:
+    """Format a ring value: whole numbers bare, fractions to one decimal."""
+    rounded = round(value, 6)
+    if abs(rounded - round(rounded)) < 1e-9:
+        return f"{rounded:.0f}%"
+    return f"{rounded:.1f}%"
+
+
 def ring(
     value: float | None,
     *,
@@ -923,7 +931,7 @@ def ring(
             desc=(
                 "not measured in this store"
                 if clamped is None
-                else f"{label}: {clamped:.0f}%"
+                else f"{label}: {_ring_pct(clamped)}"
             ),
         ),
         f'<circle cx="{num(centre)}" cy="{num(centre)}" r="{num(radius)}" '
@@ -942,7 +950,7 @@ def ring(
     parts.append(
         f'<text x="{num(centre)}" y="{num(centre + 6)}" class="pv-ring-val" '
         f'text-anchor="middle">'
-        f'{"not measured" if clamped is None else f"{clamped:.0f}%"}</text>'
+        f'{"not measured" if clamped is None else _ring_pct(clamped)}</text>'
     )
     parts.append(chart_close())
     parts.append(f'<span class="pv-ring-lbl">{esc(label)}</span></div>')

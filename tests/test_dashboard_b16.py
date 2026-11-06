@@ -12,7 +12,7 @@ import pytest
 
 from plantvision.analytics.dashboard import build, layout
 from plantvision.analytics.dashboard.build import build_report, load_panels
-from plantvision.analytics.dashboard.copy import cards_for_payload, join_fragments
+from plantvision.analytics.dashboard.copy import TEXTS, cards_for_payload, join_fragments
 from plantvision.analytics.dashboard.model import build_payload
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -200,12 +200,91 @@ def test_ring_sets_subset_matches_its_panels(payload) -> None:
     assert payload["overview"]["ring_sets"][key] == build.ring_values(panels[:2])
 
 
+def _weighted_mean(panels, key: str) -> float:
+    pairs = [
+        (float(panel["kpi"][key]), int(panel["rows"]))
+        for panel in panels
+        if panel.get("kpi", {}).get(key) is not None
+        and int(panel.get("rows", 0)) > 0
+    ]
+    return sum(value * weight for value, weight in pairs) / sum(
+        weight for _value, weight in pairs
+    )
+
+
+def test_ring_scale_and_shape_are_true_weighted_means(payload) -> None:
+    values = build.ring_values(payload["panels"])
+    assert values["scale"] == pytest.approx(
+        _weighted_mean(payload["panels"], "scale_pct")
+    )
+    assert values["shape"] == pytest.approx(
+        _weighted_mean(payload["panels"], "shape_pct")
+    )
+    assert values["shape"] == pytest.approx(100.0)
+    assert values["scale"] < 100.0
+
+
+def test_single_crop_scale_matches_its_panel_percentage(payload) -> None:
+    by_crop = {str(panel["crop"]): panel for panel in payload["panels"]}
+    expected = {"lettuce": 61.21, "basil": 99.41, "phone capture": 60.87}
+    for crop, value in expected.items():
+        assert build.ring_values([by_crop[crop]])["scale"] == pytest.approx(value)
+    assert build.ring_values([by_crop["phone capture"]])["shape"] is None
+
+
+def test_two_crop_scale_is_the_weighted_mean_of_both(payload) -> None:
+    by_crop = {str(panel["crop"]): panel for panel in payload["panels"]}
+    subset = [by_crop["basil"], by_crop["lettuce"]]
+    values = build.ring_values(subset)
+    assert values["scale"] == pytest.approx(_weighted_mean(subset, "scale_pct"))
+    assert 61.21 < values["scale"] < 99.41
+
+
 def test_client_reads_ring_values_instead_of_recomputing() -> None:
     js = layout.JS
     assert "overview" in js and "ring_sets" in js
     body = js[js.index("function renderRings()") : js.index("function renderBoard()")]
     assert "3*critical" not in body and "3 * critical" not in body
     assert "ringStroke" in body
+
+
+@pytest.mark.skipif(_NODE is None, reason="node is required to run renderer JS")
+def test_ring_centre_text_uses_one_decimal_only_when_needed() -> None:
+    js = layout.JS
+    body = js[js.index("function ringPct") : js.index("function renderRings")]
+    driver = (
+        body
+        + "\nprocess.stdout.write(JSON.stringify([ringPct(100),ringPct(79.5),"
+        "ringPct(61.21),ringPct(0)]));"
+    )
+    result = subprocess.run(
+        [_NODE, "-e", driver], check=True, capture_output=True, text=True, timeout=30
+    )
+    assert json.loads(result.stdout) == ["100%", "79.5%", "61.2%", "0%"]
+
+
+_AGGREGATE_CARD_IDS = (
+    "ch-ov-severity-donut",
+    "ch-ov-coverage-strips",
+    "ch-ov-last-change",
+    "ch-ov-last-frames",
+)
+
+
+def test_aggregate_cards_are_marked_for_the_all_panels_chip(doc: str) -> None:
+    for card_id in _AGGREGATE_CARD_IDS:
+        assert 'data-aggregate="1"' in _card_markup(doc, card_id), card_id
+
+
+def test_aggregate_chip_copy_exists_in_both_languages() -> None:
+    assert TEXTS["en"]["ui.filter.allPanels"] == "all panels"
+    assert TEXTS["ru"]["ui.filter.allPanels"] == "все панели"
+    body = layout.JS[
+        layout.JS.index("function renderAggregateChips")
+        : layout.JS.index("function thrCaption")
+    ]
+    assert "ui.filter.allPanels" in body
+    assert 'setAttribute("title"' in body and 'setAttribute("aria-label"' in body
 
 
 # --- A2: status board ------------------------------------------------------
@@ -287,10 +366,12 @@ def test_single_crop_overview_copy_names_only_that_panel(payload) -> None:
                     assert str(other["label"]) not in text
 
 
-def test_aggregate_chip_is_not_created_for_subsets() -> None:
+def test_aggregate_chip_is_limited_to_a_crop_subset() -> None:
     js = layout.JS
-    body = js[js.index("function visibility()") : js.index("function cap(card")]
-    assert "ui.filter.aggregate" not in body
+    body = js[js.index("function renderAggregateChips") : js.index("function thrCaption")]
+    assert 'data-aggregate="1"' in body
+    assert "selected<total" in body
+    assert "ui.filter.allPanels" in body
 
 
 # --- A5: scope hint --------------------------------------------------------
@@ -323,6 +404,29 @@ def test_scope_hint_strikes_disabled_filters_per_tab(doc: str) -> None:
     assert labels["scope"]["off"]["method"] == ["window", "agg", "mode"]
     assert "overview" not in labels["scope"]["off"]
     assert '"off"' in layout.JS or "'off'" in layout.JS
+
+
+def test_scope_hint_reports_cards_that_stay_cross_panel(doc: str) -> None:
+    labels = json.loads(
+        doc[
+            doc.index('id="pv-labels">') + len('id="pv-labels">') : doc.index(
+                "</script>", doc.index('id="pv-labels">')
+            )
+        ]
+    )
+    assert (
+        labels["terms"]["ui.scope.mixed"]["en"] == "some cards show all panels"
+    )
+    assert (
+        labels["terms"]["ui.scope.mixed"]["ru"]
+        == "часть карточек показывает все панели"
+    )
+    body = layout.JS[
+        layout.JS.index("function renderScope") : layout.JS.index(
+            "function updateCrumb"
+        )
+    ]
+    assert "data-aggregate" in body and "ui.scope.mixed" in body
 
 
 # --- B: snapshot diff ------------------------------------------------------

@@ -39,6 +39,15 @@ _SCOPE_DISABLED: dict[str, tuple[str, ...]] = {
     "alerts": ("window", "agg", "mode"),
     "method": ("window", "agg", "mode"),
 }
+# Overview cards that stay cross-panel even while a crop subset is active.
+_AGGREGATE_CARDS = frozenset(
+    {
+        "ch-ov-severity-donut",
+        "ch-ov-coverage-strips",
+        "ch-ov-last-change",
+        "ch-ov-last-frames",
+    }
+)
 _SCOPE_KEYS: tuple[tuple[str, str], ...] = (
     ("crop", "ui.scope.crop"),
     ("window", "ui.scope.window"),
@@ -54,8 +63,11 @@ JS_TERMS: tuple[str, ...] = (
     "ui.filter.keepOne",
     "ui.filter.capped",
     "ui.filter.aggregate",
+    "ui.filter.allPanels",
+    "ui.filter.allPanels.title",
     "ui.filter.noFrames",
     "ui.filter.emptyWindow",
+    "ui.scope.mixed",
     "ui.thr.caption",
     "ui.conclusion.single",
     "ui.chip.not-computable",
@@ -190,6 +202,8 @@ a:hover{text-decoration:underline}
  background:rgba(255,255,255,.07);color:var(--pv-mut);border-color:rgba(255,255,255,.12)}
 .pv-chip[data-state=not-measured]::before,.pv-chip[data-state=not-recorded]::before,
 .pv-chip[data-state=not-computable]::before,.pv-chip[data-state=unknown]::before{content:"?"}
+.pv-chip.pv-aggregate-chip{background:rgba(255,255,255,.07);color:var(--pv-mut);border-color:rgba(255,255,255,.12)}
+.pv-chip.pv-aggregate-chip::before{content:none}
 .pv-tablewrap{overflow-x:auto;max-width:100%}
 .pv-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:12.5px}
 .pv-card .pv-table{font-size:12.5px}
@@ -287,6 +301,7 @@ B16_CSS: str = """
 .pv-scope-k{font-weight:600}
 .pv-scope .off{text-decoration:line-through;opacity:.6}
 .pv-scope-sep{opacity:.45}
+.pv-scope-note{color:var(--pv-a1)}
 .pv-table tfoot td{color:var(--pv-mut);font-size:11.5px;border-top:1px solid var(--pv-grid);border-bottom:0}
 tr[hidden]{display:none}
 .pv-snap-inputs{display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 10px}
@@ -691,6 +706,7 @@ def _card(
         )
     title_en = str(card["title_en"])
     title_ru = str(card["title_ru"])
+    aggregate_attr = 'data-aggregate="1" ' if card_id in _AGGREGATE_CARDS else ""
     open_label = _txt("ui.open", lang).format(title=title_en if lang == "en" else title_ru)
     explain = "".join(
         _leaf("dt", TEXTS["en"][f"ui.explain.{field}"], TEXTS["ru"][f"ui.explain.{field}"], lang)
@@ -710,6 +726,7 @@ def _card(
         f'data-render="{esc(str(card.get("render", "static")))}" '
         f'data-filter-scope="{esc(str(card.get("filter_scope", "all-panels")))}" '
         f'data-card-key="{esc(str(card.get("key", "")))}" '
+        f'{aggregate_attr}'
         f'data-key="{esc("area_cm2" if "cm2" in card_id else "area_px" if "area-px" in card_id else "")}">'
         '<header class="pv-card-head">'
         + _leaf("h3", title_en, title_ru, lang)
@@ -1335,6 +1352,13 @@ _JS_CORE = r"""
       if (i) { parts.push('<span class="pv-scope-sep">·</span>'); }
       parts.push('<span class="' + (off.indexOf(k.key) >= 0 ? "off" : "") + '">' + E(k[lang] || k.en) + "</span>");
     });
+    var hasAggregate = false, hasFiltered = false;
+    Array.prototype.forEach.call(document.querySelectorAll('.pv-card[data-tab="' + tab + '"]'), function (card) {
+      if (card.getAttribute("data-aggregate") === "1") { hasAggregate = true; } else { hasFiltered = true; }
+    });
+    if (hasAggregate && hasFiltered) {
+      parts.push('<span class="pv-scope-sep">·</span><span class="pv-scope-note">' + E(T("ui.scope.mixed")) + "</span>");
+    }
     el.innerHTML = parts.join(" ");
   }
 
@@ -1804,7 +1828,19 @@ function bd(f){
   });
   return lo===null||hi===null?{lo:now-D,hi:now}:{lo:lo,hi:Math.min(hi,now)};
 }
-function renderRings(){var card=document.getElementById("pv-card-ch-ov-kpi-rings");if(!card)return;var sets=(payload&&payload.overview&&payload.overview.ring_sets)||{},vals=sets[ringKey(state.filters)]||sets[ringKey(def())];if(!vals)return;var keys=["scale","freshness","pressure","shape"];Array.prototype.forEach.call(card.querySelectorAll(".pv-ring"),function(div,i){var raw=vals[keys[i]],v=(raw===null||raw===undefined||!isFinite(Number(raw)))?null:Math.max(0,Math.min(100,Number(raw)));var circles=div.querySelectorAll("svg circle"),track=circles[0];if(!track)return;var r=Number(track.getAttribute("r")),sw=Number(track.getAttribute("stroke-width")),c=2*Math.PI*r,arc=circles[1];div.setAttribute("data-state",v===null?"not-measured":"ok");if(v===null){if(arc&&arc.parentNode)arc.parentNode.removeChild(arc);}else{if(!arc){arc=track.cloneNode(false);track.parentNode.appendChild(arc);}arc.setAttribute("fill","none");arc.setAttribute("stroke",ringStroke(v));arc.setAttribute("stroke-width",String(sw));arc.setAttribute("stroke-linecap","round");arc.setAttribute("transform","rotate(-90 "+track.getAttribute("cx")+" "+track.getAttribute("cy")+")");arc.setAttribute("stroke-dasharray",String(R6(c)));arc.setAttribute("stroke-dashoffset",String(R6(c*(1-v/100))));}var txt=div.querySelector(".pv-ring-val");if(txt)txt.textContent=v===null?T("ui.chip.not-measured"):v.toFixed(0)+"%";});}function ringKey(f){return pick(f).map(function(p){return String(p.id);}).join("+");}function ringStroke(v){return v>=90?"var(--pv-pos)":v>=50?"#E0A800":"url(#pv-grad-a)";}function renderBoard(){var card=document.getElementById("pv-card-ch-ov-status-board");if(!card)return;var rows=card.querySelectorAll("tbody tr[data-panel]");if(!rows.length)return;var sel={};pick().forEach(function(p){sel[String(p.id)]=1;});var n=0;Array.prototype.forEach.call(rows,function(tr){var on=!!sel[tr.getAttribute("data-panel")];tr.hidden=!on;if(on)n++;});var emptyRow=card.querySelector("[data-board-empty]");if(emptyRow)emptyRow.hidden=n>0;var foot=card.querySelector("[data-board-count]");if(foot)foot.textContent=T("ui.board.showing").replace("{n}",n).replace("{total}",rows.length);}function renderFramesBars(){var card=document.getElementById("pv-card-ch-ov-frames-bars");if(!card)return;var fig=card.querySelector(".pv-figure");if(!fig)return;var ps=pick(),cal=payload&&payload.calendar,cells=(cal&&cal.rows&&cal.rows[0]&&cal.rows[0].cells)||[],days=[];cells.forEach(function(cell){days.push(String(cell.date));});if(!ps.length||!days.length){clear(fig);fig.insertAdjacentHTML("afterbegin",empty());return;}var series=ps.length,counts=ps.map(function(p){var m={};((p.daily)||[]).forEach(function(b){m[String(b.date)]=Number(b.frames||0);});return m;});var items=[],hi=1,i,j;for(i=0;i<days.length;i++)for(j=0;j<series;j++){var val=counts[j][days[i]]||0;items.push(val);if(val>hi)hi=val;}var plotW=Math.max(G.pw,days.length*series*10),viewW=G.pl+plotW+G.pr,groupW=plotW/days.length,gap=4,barW=Math.min(18,Math.max(6,(groupW-gap*(series-1))/series)),content=series*barW+gap*(series-1),top=G.pt,bottom=G.pt+142,fills={A:"url(#pv-grad-a)",B:"url(#pv-hatch-b)",C:"var(--pv-pos)"},o=['<svg class="pv-chart" viewBox="0 0 '+viewW+' 240" role="img"><title id="ch-ov-frames-live-t">'+E(card.querySelector("h3").textContent)+"</title>"];ps.forEach(function(p,k){var x=G.pl+k*150,slot="ABC"[k%3];o.push('<rect x="'+x+'" y="2" width="10" height="10" rx="2" fill="'+fills[slot]+'" stroke="var(--pv-b1)"/><text x="'+(x+14)+'" y="11" class="pv-legend">'+E(p.label)+"</text>");});for(i=0;i<days.length;i++){var gx=G.pl+i*groupW+(groupW-content)/2;for(j=0;j<series;j++){var value=items[i*series+j],y=bottom-(bottom-top)*(Math.max(0,value)/hi),x=gx+j*(barW+gap);o.push('<rect class="pv-bar" x="'+num(x)+'" width="'+num(barW)+'" y="'+num(y)+'" height="'+num((bottom-y)||1)+'" rx="2" fill="'+fills["ABC"[j%3]]+'" stroke="var(--pv-track)"/>');}o.push('<text x="'+num(G.pl+i*groupW+groupW/2)+'" y="180" class="pv-ax" text-anchor="middle">'+E(days[i].slice(5))+"</text>");}o.push("</svg>");clear(fig);fig.insertAdjacentHTML("afterbegin",o.join(""));}function renderOverview(){renderRings();renderBoard();renderFramesBars();}
+function ringPct(v){return(v%1===0?v.toFixed(0):v.toFixed(1))+"%"}function renderRings(){var card=document.getElementById("pv-card-ch-ov-kpi-rings");if(!card)return;var sets=(payload&&payload.overview&&payload.overview.ring_sets)||{},vals=sets[ringKey(state.filters)]||sets[ringKey(def())];if(!vals)return;var keys=["scale","freshness","pressure","shape"];Array.prototype.forEach.call(card.querySelectorAll(".pv-ring"),function(div,i){var raw=vals[keys[i]],v=(raw===null||raw===undefined||!isFinite(Number(raw)))?null:Math.max(0,Math.min(100,Number(raw)));var circles=div.querySelectorAll("svg circle"),track=circles[0];if(!track)return;var r=Number(track.getAttribute("r")),sw=Number(track.getAttribute("stroke-width")),c=2*Math.PI*r,arc=circles[1];div.setAttribute("data-state",v===null?"not-measured":"ok");if(v===null){if(arc&&arc.parentNode)arc.parentNode.removeChild(arc);}else{if(!arc){arc=track.cloneNode(false);track.parentNode.appendChild(arc);}arc.setAttribute("fill","none");arc.setAttribute("stroke",ringStroke(v));arc.setAttribute("stroke-width",String(sw));arc.setAttribute("stroke-linecap","round");arc.setAttribute("transform","rotate(-90 "+track.getAttribute("cx")+" "+track.getAttribute("cy")+")");arc.setAttribute("stroke-dasharray",String(R6(c)));arc.setAttribute("stroke-dashoffset",String(R6(c*(1-v/100))));}var txt=div.querySelector(".pv-ring-val");if(txt)txt.textContent=v===null?T("ui.chip.not-measured"):ringPct(v);});}function ringKey(f){return pick(f).map(function(p){return String(p.id);}).join("+");}function ringStroke(v){return v>=90?"var(--pv-pos)":v>=50?"#E0A800":"url(#pv-grad-a)";}function renderBoard(){var card=document.getElementById("pv-card-ch-ov-status-board");if(!card)return;var rows=card.querySelectorAll("tbody tr[data-panel]");if(!rows.length)return;var sel={};pick().forEach(function(p){sel[String(p.id)]=1;});var n=0;Array.prototype.forEach.call(rows,function(tr){var on=!!sel[tr.getAttribute("data-panel")];tr.hidden=!on;if(on)n++;});var emptyRow=card.querySelector("[data-board-empty]");if(emptyRow)emptyRow.hidden=n>0;var foot=card.querySelector("[data-board-count]");if(foot)foot.textContent=T("ui.board.showing").replace("{n}",n).replace("{total}",rows.length);}function renderFramesBars(){var card=document.getElementById("pv-card-ch-ov-frames-bars");if(!card)return;var fig=card.querySelector(".pv-figure");if(!fig)return;var ps=pick(),cal=payload&&payload.calendar,cells=(cal&&cal.rows&&cal.rows[0]&&cal.rows[0].cells)||[],days=[];cells.forEach(function(cell){days.push(String(cell.date));});if(!ps.length||!days.length){clear(fig);fig.insertAdjacentHTML("afterbegin",empty());return;}var series=ps.length,counts=ps.map(function(p){var m={};((p.daily)||[]).forEach(function(b){m[String(b.date)]=Number(b.frames||0);});return m;});var items=[],hi=1,i,j;for(i=0;i<days.length;i++)for(j=0;j<series;j++){var val=counts[j][days[i]]||0;items.push(val);if(val>hi)hi=val;}var plotW=Math.max(G.pw,days.length*series*10),viewW=G.pl+plotW+G.pr,groupW=plotW/days.length,gap=4,barW=Math.min(18,Math.max(6,(groupW-gap*(series-1))/series)),content=series*barW+gap*(series-1),top=G.pt,bottom=G.pt+142,fills={A:"url(#pv-grad-a)",B:"url(#pv-hatch-b)",C:"var(--pv-pos)"},o=['<svg class="pv-chart" viewBox="0 0 '+viewW+' 240" role="img"><title id="ch-ov-frames-live-t">'+E(card.querySelector("h3").textContent)+"</title>"];ps.forEach(function(p,k){var x=G.pl+k*150,slot="ABC"[k%3];o.push('<rect x="'+x+'" y="2" width="10" height="10" rx="2" fill="'+fills[slot]+'" stroke="var(--pv-b1)"/><text x="'+(x+14)+'" y="11" class="pv-legend">'+E(p.label)+"</text>");});for(i=0;i<days.length;i++){var gx=G.pl+i*groupW+(groupW-content)/2;for(j=0;j<series;j++){var value=items[i*series+j],y=bottom-(bottom-top)*(Math.max(0,value)/hi),x=gx+j*(barW+gap);o.push('<rect class="pv-bar" x="'+num(x)+'" width="'+num(barW)+'" y="'+num(y)+'" height="'+num((bottom-y)||1)+'" rx="2" fill="'+fills["ABC"[j%3]]+'" stroke="var(--pv-track)"/>');}o.push('<text x="'+num(G.pl+i*groupW+groupW/2)+'" y="180" class="pv-ax" text-anchor="middle">'+E(days[i].slice(5))+"</text>");}o.push("</svg>");clear(fig);fig.insertAdjacentHTML("afterbegin",o.join(""));}function renderOverview(){renderRings();renderBoard();renderFramesBars();renderAggregateChips();}
+function renderAggregateChips(){
+  var total=((payload&&payload.panels)||[]).length,selected=pick().length,subset=selected>0&&selected<total;
+  Array.prototype.forEach.call(document.querySelectorAll('.pv-card[data-aggregate="1"]'),function(card){
+    var head=card.querySelector(".pv-card-head"),chip=card.querySelector(".pv-aggregate-chip");
+    if(subset){
+      if(!chip){chip=document.createElement("span");chip.className="pv-chip pv-aggregate-chip";if(head)head.appendChild(chip);}
+      chip.textContent=T("ui.filter.allPanels");
+      chip.setAttribute("title",T("ui.filter.allPanels.title"));
+      chip.setAttribute("aria-label",T("ui.filter.allPanels.title"));
+    }else if(chip){chip.parentNode.removeChild(chip);}
+  });
+}
 function thrCaption(thresholds){
   var labs=[];
   (thresholds||[]).forEach(function(t){

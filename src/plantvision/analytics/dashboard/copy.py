@@ -129,6 +129,10 @@ _UI_EN: dict[str, str] = {
     "ui.controls.naNoTime": "No time-series cards on this tab",
     "ui.controls.naBarsOnly": "Bars only: mode does not apply",
     "ui.filter.aggregate": "aggregate of all panels",
+    "ui.filter.allPanels": "all panels",
+    "ui.filter.allPanels.title": (
+        "This card summarises all panels; the crop filter is not applied."
+    ),
     "ui.filter.emptyScope": "no panel selected",
     "ui.filter.emptyWindow": "no frames in this window",
     "ui.filter.invalid": "invalid filter: {token}",
@@ -192,6 +196,7 @@ _UI_EN: dict[str, str] = {
     "ui.scope.window": "window",
     "ui.scope.agg": "aggregation",
     "ui.scope.mode": "mode",
+    "ui.scope.mixed": "some cards show all panels",
     "ui.board.showing": "Showing {n} of {total} panels",
     "ui.ov.lastchange": "Change since last frame",
     "ui.ov.thumbs": "Last frames",
@@ -301,6 +306,10 @@ _UI_RU: dict[str, str] = {
     "ui.controls.naNoTime": "На этой вкладке нет временных рядов",
     "ui.controls.naBarsOnly": "Только столбцы: режим не применяется",
     "ui.filter.aggregate": "агрегат по всем панелям",
+    "ui.filter.allPanels": "все панели",
+    "ui.filter.allPanels.title": (
+        "Эта карточка показывает все панели; фильтр по культуре к ней не применяется."
+    ),
     "ui.filter.emptyScope": "не выбрано ни одной панели",
     "ui.filter.emptyWindow": "в этом окне нет кадров",
     "ui.filter.invalid": "неверный фильтр: {token}",
@@ -363,6 +372,7 @@ _UI_RU: dict[str, str] = {
     "ui.scope.window": "окно",
     "ui.scope.agg": "агрегация",
     "ui.scope.mode": "режим",
+    "ui.scope.mixed": "часть карточек показывает все панели",
     "ui.board.showing": "Показаны {n} из {total} панелей",
     "ui.ov.lastchange": "Изменение с последнего кадра",
     "ui.ov.thumbs": "Последние кадры",

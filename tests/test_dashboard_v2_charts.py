@@ -190,6 +190,12 @@ def test_ring_dashoffset_matches_value() -> None:
     assert "72%" in markup
 
 
+def test_ring_centre_text_formats_whole_and_fractional_values() -> None:
+    assert ">79.5%</text>" in ring(79.5, label="scale", chart_id="ch-ring-half")
+    assert ">100%</text>" in ring(100, label="shape", chart_id="ch-ring-full")
+    assert ">61.2%</text>" in ring(61.21, label="scale", chart_id="ch-ring-precise")
+
+
 def test_ring_stroke_follows_value_thresholds() -> None:
     def _stroke(value: float) -> str:
         markup = ring(value, label="scale", chart_id="ch-ring-threshold")

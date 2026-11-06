@@ -145,8 +145,8 @@ def ring_values(panels: Sequence[dict[str, object]]) -> dict[str, float | None]:
     """Four Overview ring values for one panel subset.
 
     Uses the weighted aggregate shared by the static markup: scale and shape
-    are row-weighted, freshness is the worst panel, pressure is derived from
-    the alert counts per row.
+    are the row-weighted mean of the panel percentages, freshness is the worst
+    panel, pressure is derived from the alert counts per row.
 
     Args:
         panels: Panel payload blocks in config order.
@@ -170,8 +170,8 @@ def ring_values(panels: Sequence[dict[str, object]]) -> dict[str, float | None]:
         value = kpi.get("freshness_pct")
         if value is not None and (freshness is None or value < freshness):
             freshness = float(value)
-    scale_value = 100.0 * scale / rows_total if rows_total else None
-    shape_value = 100.0 * shape / shape_weight if shape_weight else None
+    scale_value = scale / rows_total if rows_total else None
+    shape_value = shape / shape_weight if shape_weight else None
     critical = sum(int(panel.get("alerts", {}).get("critical", 0)) for panel in panels)
     warn = sum(int(panel.get("alerts", {}).get("warn", 0)) for panel in panels)
     pressure = (
