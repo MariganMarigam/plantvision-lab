@@ -55,6 +55,30 @@ _SCOPE_KEYS: tuple[tuple[str, str], ...] = (
     ("mode", "ui.scope.mode"),
 )
 
+
+def _scope_html(tab: str, lang: str) -> str:
+    """Server-rendered filter scope line (visible before the client boots)."""
+    parts = [
+        f'<span class="pv-scope-k">{esc(TEXTS[lang]["ui.scope.label"])}</span>'
+    ]
+    off = _SCOPE_DISABLED.get(tab, ())
+    for index, (key, text_key) in enumerate(_SCOPE_KEYS):
+        if index:
+            parts.append('<span class="pv-scope-sep">·</span>')
+        cls = ' class="off"' if key in off else ""
+        parts.append(f"<span{cls}>{esc(TEXTS[lang][text_key])}</span>")
+    tab_cards = [card for card in CARDS if card.tab == tab]
+    has_aggregate = any(card.id in _AGGREGATE_CARDS for card in tab_cards)
+    has_filtered = any(card.id not in _AGGREGATE_CARDS for card in tab_cards)
+    if has_aggregate and has_filtered:
+        parts.append('<span class="pv-scope-sep">·</span>')
+        parts.append(
+            '<span class="pv-scope-note">'
+            f'{esc(TEXTS[lang]["ui.scope.mixed"])}</span>'
+        )
+    return " ".join(parts)
+
+
 # Every UI term the client renderer needs; shipped as compact JSON instead of
 # hidden DOM nodes (smaller page, one source for both languages).
 JS_TERMS: tuple[str, ...] = (
@@ -297,7 +321,7 @@ CONTROL_CSS: str = """
 B16_CSS: str = """
 .pv-panel-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:0 0 10px}
 .pv-panel-head .pv-h2{margin:0}
-.pv-scope{display:flex;align-items:baseline;gap:6px;margin:0;font-size:12px;color:var(--pv-mut)}
+.pv-scope{display:flex;align-items:baseline;gap:6px;margin:0 0 8px;min-height:18px;font-size:12px;color:var(--pv-mut)}
 .pv-scope-k{font-weight:600}
 .pv-scope .off{text-decoration:line-through;opacity:.6}
 .pv-scope-sep{opacity:.45}
@@ -1271,7 +1295,8 @@ def render_page(
         + '<div class="pv-shell">'
         + _topbar(payload, active, SUBS[active][0], lang)
         + '<main class="pv-main" id="pv-main">'
-        + '<p class="pv-scope" id="pv-scope"></p>'
+        + f'<p class="pv-scope" id="pv-scope" data-visible="1">'
+        + f"{_scope_html(active, lang)}</p>"
         + f"{panels_html}</main>"
         "</div></div>"
         + _drawer(lang)
@@ -1357,8 +1382,10 @@ _JS_CORE = r"""
       if (card.getAttribute("data-aggregate") === "1") { hasAggregate = true; } else { hasFiltered = true; }
     });
     if (hasAggregate && hasFiltered) {
-      parts.push('<span class="pv-scope-sep">·</span><span class="pv-scope-note">' + E(T("ui.scope.mixed")) + "</span>");
+      parts.push('<span class="pv-scope-sep">·</span> <span class="pv-scope-note">' + E(T("ui.scope.mixed")) + "</span>");
     }
+    el.hidden = false;
+    el.setAttribute("data-visible", "1");
     el.innerHTML = parts.join(" ");
   }
 
@@ -1934,12 +1961,11 @@ function singleConclusion(c,p,lang){
 }
 function joinField(c,field,sel,all){
   function one(lang){
-    if(sel.length===all.length)return String(c[field+"_"+lang]||"");
+    if(sel.length===all.length&&sel.length!==1)return String(c[field+"_"+lang]||"");
     if(field==="conclusion"&&sel.length>=2)return String(c["conclusion_"+lang]||"");
     if(field==="conclusion"&&sel.length===1&&(c.single_values||{})[String(sel[0].id)])return singleConclusion(c,sel[0],lang);
-    var map=c[field+"_parts"]||{},parts=[];
-    sel.forEach(function(p){var q=map[String(p.id)];if(q)parts.push(q[lang]||q.en||"");});
-    parts=parts.filter(function(x){return x;});
+    var map=c[field+"_parts"]||{},parts=[],seps=c.label_sep||{},sep=seps[field]===undefined?":":String(seps[field]);
+    sel.forEach(function(p){var q=map[String(p.id)];if(!q)return;var text=q[lang]||q.en||"";if(!text)return;var label=String(p.label||"");if(label&&text.indexOf(label)<0)text=(sep&&sep!==" ")?label+sep+" "+text:label+" "+text;parts.push(text);});
     var tpl=(c[field+"_join"]||{})[lang]||"{parts}",body=tpl.replace("{parts}",parts.map(function(x){return x.replace(/\.$/,"");}).join("; "));
     return body&&!/\.$/.test(body)?body+".":body;
   }

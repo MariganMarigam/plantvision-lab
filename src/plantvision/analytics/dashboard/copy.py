@@ -431,6 +431,15 @@ _CARD_EN: dict[str, str] = {
         "{inside} of {panels} panels are within the freshness budget; {worst} is "
         "the binding constraint because {rule} is {rule_value} {unit}."
     ),
+    "ch-ov-kpi-rings.now.single": (
+        "scale coverage {scale}; freshness {fresh}; shape coverage {shape}."
+    ),
+    "ch-ov-kpi-rings.conclusion.single.inside": (
+        "is within the freshness budget."
+    ),
+    "ch-ov-kpi-rings.conclusion.single.outside": (
+        "is outside the freshness budget (last frame {age} days old)."
+    ),
     "ch-ov-frames-bars.title": "Frames per UTC day",
     "ch-ov-frames-bars.what": (
         "Grouped bars: one bar per panel per UTC day, counting captured frames."
@@ -450,6 +459,14 @@ _CARD_EN: dict[str, str] = {
     "ch-ov-frames-bars.conclusion": (
         "{frames} frames across {panels} panels; the busiest day is {busiest} "
         "with {busiest_count} frames."
+    ),
+    "ch-ov-frames-bars.now.single": (
+        "{frames} frames across 1 panel; the busiest day is {busiest} with "
+        "{busiest_count} frames."
+    ),
+    "ch-ov-frames-bars.conclusion.single": (
+        "{frames} frames from one panel; the busiest day is {busiest} with "
+        "{busiest_count} frames."
     ),
     "ch-ov-status-board.title": "Panel status board",
     "ch-ov-status-board.what": (
@@ -471,6 +488,12 @@ _CARD_EN: dict[str, str] = {
     "ch-ov-status-board.conclusion": (
         "{healthy} of {panels} panels are within the freshness budget; {worst} "
         "shows {worst_verdict}."
+    ),
+    "ch-ov-status-board.conclusion.single.inside": (
+        "the panel is within the freshness budget; verdict {worst_verdict}."
+    ),
+    "ch-ov-status-board.conclusion.single.outside": (
+        "the panel is outside the freshness budget; verdict {worst_verdict}."
     ),
     "ch-ov-severity-donut.title": "Findings by severity",
     "ch-ov-severity-donut.what": (
@@ -662,6 +685,15 @@ _CARD_RU: dict[str, str] = {
         "{inside} из {panels} панелей укладываются в бюджет свежести; «{worst}» — "
         "узкое место, потому что {rule} = {rule_value} {unit}."
     ),
+    "ch-ov-kpi-rings.now.single": (
+        "покрытие масштаба {scale}; свежесть {fresh}; покрытие формы {shape}."
+    ),
+    "ch-ov-kpi-rings.conclusion.single.inside": (
+        "в пределах бюджета свежести."
+    ),
+    "ch-ov-kpi-rings.conclusion.single.outside": (
+        "вне бюджета свежести (последний кадр — {age} дн. назад)."
+    ),
     "ch-ov-frames-bars.title": "Кадры по суткам UTC",
     "ch-ov-frames-bars.what": (
         "Сгруппированные столбцы: по одному на панель за сутки UTC, считая "
@@ -681,6 +713,14 @@ _CARD_RU: dict[str, str] = {
     ),
     "ch-ov-frames-bars.conclusion": (
         "{frames} кадров по {panels} панелям; самый занятый день — {busiest}, "
+        "{busiest_count} кадров."
+    ),
+    "ch-ov-frames-bars.now.single": (
+        "{frames} кадров; в выборке 1 панель; самый занятый день — {busiest}, "
+        "{busiest_count} кадров."
+    ),
+    "ch-ov-frames-bars.conclusion.single": (
+        "{frames} кадров с одной панели; самый занятый день — {busiest}, "
         "{busiest_count} кадров."
     ),
     "ch-ov-status-board.title": "Сводка по панелям",
@@ -703,6 +743,12 @@ _CARD_RU: dict[str, str] = {
     "ch-ov-status-board.conclusion": (
         "{healthy} из {panels} панелей укладываются в бюджет свежести; «{worst}» — "
         "{worst_verdict}."
+    ),
+    "ch-ov-status-board.conclusion.single.inside": (
+        "панель в пределах бюджета свежести; вердикт {worst_verdict}."
+    ),
+    "ch-ov-status-board.conclusion.single.outside": (
+        "панель вне бюджета свежести; вердикт {worst_verdict}."
     ),
     "ch-ov-severity-donut.title": "Находки по важности",
     "ch-ov-severity-donut.what": (
@@ -1020,11 +1066,8 @@ _DO_FRAGMENT_CARDS: frozenset[str] = frozenset(
     card_id for card_id in FRAGMENT_CARDS if not card_id.startswith("ch-ov-")
 )
 
-# Overview copy fragments carry the panel label as a prefix because their
-# templates are label-less value lists (unlike the Growth per-panel lines).
-_LABELLED_FRAGMENT_CARDS: frozenset[str] = frozenset(
-    card_id for card_id in FRAGMENT_CARDS if card_id.startswith("ch-ov-")
-)
+# Overview copy fragments are label-free value lists; the join adds the panel
+# label once. Growth fragments already carry their label inside ``per_panel``.
 
 # Conclusions that decompose into one sentence per panel (line/bar cards); the
 # daily table keeps its own template with per-panel totals.
@@ -1147,6 +1190,19 @@ def _pct(value: float | None, missing: str) -> str:
     return missing if value is None else f"{value:.1f} %"
 
 
+def _ring_pct(value: object, missing: str) -> str:
+    """Ring-style percentage: whole numbers bare, fractions to one decimal."""
+    if value is None:
+        return missing
+    try:
+        rounded = round(float(value), 6)
+    except (TypeError, ValueError):
+        return missing
+    if abs(rounded - round(rounded)) < 1e-9:
+        return f"{rounded:.0f}%"
+    return f"{rounded:.1f}%"
+
+
 def _number(value: float | None, decimals: int, unit: str, missing: str) -> str:
     """Format a number with optional unit."""
     if value is None:
@@ -1248,6 +1304,8 @@ def _values(card_id: str, payload: dict[str, object], lang: str) -> dict[str, st
     labels = _join([str(panel.get("label", "")) for panel in panels]) or missing
 
     if card_id == "ch-ov-kpi-rings":
+        first = panels[0] if panels else {}
+        first_kpi = first.get("kpi") if isinstance(first.get("kpi"), dict) else {}
         scale_list = _join([_pct(panel["kpi"].get("scale_pct"), missing) for panel in panels]) or missing
         fresh_list = _join([_pct(panel["kpi"].get("freshness_pct"), missing) for panel in panels]) or missing
         shape_list = _join([_pct(panel["kpi"].get("shape_pct"), missing) for panel in panels]) or missing
@@ -1275,6 +1333,10 @@ def _values(card_id: str, payload: dict[str, object], lang: str) -> dict[str, st
             "fresh_list": fresh_list,
             "pressure_list": _join(pressures) or missing,
             "shape_list": shape_list,
+            "scale": _ring_pct(first_kpi.get("scale_pct"), missing),
+            "fresh": _ring_pct(first_kpi.get("freshness_pct"), missing),
+            "shape": _ring_pct(first_kpi.get("shape_pct"), missing),
+            "age": _number(first.get("age_days"), 1, "", missing),
             "inside": str(inside),
             "panels": str(len(panels)),
             "worst": worst,
@@ -1957,18 +2019,37 @@ def _fragment(
     field: str,
     lang: str,
 ) -> str:
-    """Formatted per-panel ``now``/``conclusion`` fragment for one card."""
+    """Formatted per-panel ``now``/``conclusion`` fragment for one card.
+
+    Fragments never repeat the panel label: a fragment whose template already
+    names the panel (or whose generated line starts with it) stays label-free
+    for the join, which adds ``label:`` once.
+    """
     sub = _sub_payload(payload, panel)
+    key = f"{card_id}.{field}.single"
+    if card_id == "ch-ov-kpi-rings" and field == "conclusion":
+        try:
+            outside = float(panel.get("age_days")) > 7.0
+        except (TypeError, ValueError):
+            outside = False
+        key = (
+            f"{card_id}.conclusion.single."
+            f"{'outside' if outside else 'inside'}"
+        )
+    elif card_id == "ch-ov-status-board" and field == "conclusion":
+        state = (
+            "inside"
+            if str(_values(card_id, sub, lang).get("healthy", "0")) == "1"
+            else "outside"
+        )
+        key = f"{card_id}.conclusion.single.{state}"
+    if key in TEXTS.get(lang, {}):
+        return _fill(TEXTS[lang][key], _values(card_id, sub, lang))
     if field == "conclusion" and card_id in PER_PANEL_CONCLUSION:
-        text = str(_values(card_id, sub, lang).get("per_panel") or "")
-    elif field == "conclusion":
-        text = conclusion(card_id, sub, lang)
-    else:
-        text = _now_text(card_id, sub, lang)
-    if card_id in _LABELLED_FRAGMENT_CARDS:
-        label = str(panel.get("label", ""))
-        return f"{label}: {text}" if label else text
-    return text
+        return str(_values(card_id, sub, lang).get("per_panel") or "")
+    if field == "conclusion":
+        return conclusion(card_id, sub, lang)
+    return _now_text(card_id, sub, lang)
 
 
 def _panel_fragments(
@@ -2028,14 +2109,32 @@ def join_fragments(
         return str(card.get(f"{field}_{lang}", ""))
     if not isinstance(parts_map, dict):
         return str(card.get(f"{field}_{lang}", ""))
-    if len(selected) == len(parts_map):
+    if len(selected) == len(parts_map) and len(selected) != 1:
         return str(card.get(f"{field}_{lang}", ""))
-    parts = [
-        str((parts_map.get(panel_id) or {}).get(lang, ""))
-        for panel_id in selected
-        if isinstance(parts_map.get(panel_id), dict)
-    ]
-    parts = [part for part in parts if part]
+    labels = (
+        card.get("panel_labels")
+        if isinstance(card.get("panel_labels"), dict)
+        else {}
+    )
+    seps = (
+        card.get("label_sep") if isinstance(card.get("label_sep"), dict) else {}
+    )
+    sep = str(seps.get(field, ":"))
+    parts = []
+    for panel_id in selected:
+        entry = parts_map.get(panel_id)
+        if not isinstance(entry, dict):
+            continue
+        part = str(entry.get(lang, ""))
+        if not part:
+            continue
+        label = str(labels.get(panel_id, ""))
+        if label and label not in part:
+            if sep and sep != " ":
+                part = f"{label}{sep} {part}"
+            else:
+                part = f"{label} {part}"
+        parts.append(part)
     template_map = card.get(f"{field}_join")
     template = (
         str(template_map.get(lang, "{parts}"))
@@ -2072,6 +2171,19 @@ def cards_for_payload(payload: dict[str, object]) -> list[dict[str, object]]:
                 "source": card.source,
                 "state": _state(card.id, payload),
                 "span": card.span,
+                "panel_labels": (
+                    {
+                        str(panel.get("id", "")): str(panel.get("label", ""))
+                        for panel in _panels(payload)
+                    }
+                    if card.id in FRAGMENT_CARDS
+                    else {}
+                ),
+                "label_sep": (
+                    {"conclusion": " "}
+                    if card.id == "ch-ov-kpi-rings"
+                    else {}
+                ),
                 "filter": {
                     "crop": scope[0],
                     "window": scope[1],

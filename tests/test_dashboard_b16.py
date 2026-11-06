@@ -429,6 +429,130 @@ def test_scope_hint_reports_cards_that_stay_cross_panel(doc: str) -> None:
     assert "data-aggregate" in body and "ui.scope.mixed" in body
 
 
+def test_scope_line_is_server_rendered_and_flagged_visible(doc: str) -> None:
+    start = doc.index('<p class="pv-scope"')
+    markup = doc[start : doc.index("</p>", start)]
+    assert 'id="pv-scope"' in markup
+    assert 'data-visible="1"' in markup
+    assert "Filters:" in markup
+    for name in ("crop", "window", "aggregation", "mode"):
+        assert f">{name}<" in markup
+    assert "pv-scope-note" in markup
+    assert "some cards show all panels" in markup
+    body = layout.JS[
+        layout.JS.index("function renderScope") : layout.JS.index(
+            "function updateCrumb"
+        )
+    ]
+    assert 'setAttribute("data-visible", "1")' in body
+    assert "el.hidden = false" in body
+
+
+def test_scope_line_strikes_ignored_controls_per_tab() -> None:
+    alerts = layout._scope_html("alerts", "en")
+    assert alerts.count('class="off"') == 3
+    assert "line-through" in layout.CSS
+
+
+def test_single_panel_rings_copy_uses_singular_template(payload) -> None:
+    lettuce = next(
+        panel for panel in payload["panels"] if str(panel["crop"]) == "lettuce"
+    )
+    label = str(lettuce["label"])
+    panel_id = str(lettuce["id"])
+    card = next(
+        card for card in payload["cards"] if card["id"] == "ch-ov-kpi-rings"
+    )
+    now = join_fragments(card, "now", [panel_id], "en")
+    conclusion = join_fragments(card, "conclusion", [panel_id], "en")
+    assert now == (
+        f"{label}: scale coverage 61.2%; freshness 73.8%; shape coverage 100%."
+    )
+    assert conclusion == f"{label} is within the freshness budget."
+    assert "1 panels" not in now + conclusion
+    assert "0 of 1" not in now + conclusion
+
+
+def test_single_panel_rings_conclusion_reports_age_outside_budget(payload) -> None:
+    panel = next(
+        panel for panel in payload["panels"] if str(panel["crop"]) == "lettuce"
+    )
+    stale = dict(panel, age_days=9.2)
+    stale_payload = dict(payload, panels=[stale])
+    card = next(
+        card
+        for card in cards_for_payload(stale_payload)
+        if card["id"] == "ch-ov-kpi-rings"
+    )
+    text = join_fragments(card, "conclusion", [str(stale["id"])], "en")
+    assert text == (
+        f"{stale['label']} is outside the freshness budget "
+        "(last frame 9.2 days old)."
+    )
+
+
+def test_single_panel_frames_copy_uses_singular_template(payload) -> None:
+    lettuce = next(
+        panel for panel in payload["panels"] if str(panel["crop"]) == "lettuce"
+    )
+    label = str(lettuce["label"])
+    panel_id = str(lettuce["id"])
+    card = next(
+        card for card in payload["cards"] if card["id"] == "ch-ov-frames-bars"
+    )
+    now = join_fragments(card, "now", [panel_id], "en")
+    conclusion = join_fragments(card, "conclusion", [panel_id], "en")
+    assert now == (
+        f"{label}: 843 frames across 1 panel; the busiest day is "
+        "2026-10-29 with 191 frames."
+    )
+    assert conclusion == (
+        f"{label}: 843 frames from one panel; the busiest day is "
+        "2026-10-29 with 191 frames."
+    )
+    assert "1 panels" not in now + conclusion
+
+
+def test_single_panel_russian_copy_is_singular(payload) -> None:
+    lettuce = next(
+        panel for panel in payload["panels"] if str(panel["crop"]) == "lettuce"
+    )
+    label = str(lettuce["label"])
+    panel_id = str(lettuce["id"])
+    rings = next(
+        card for card in payload["cards"] if card["id"] == "ch-ov-kpi-rings"
+    )
+    frames = next(
+        card for card in payload["cards"] if card["id"] == "ch-ov-frames-bars"
+    )
+    assert join_fragments(rings, "now", [panel_id], "ru") == (
+        f"{label}: покрытие масштаба 61.2%; свежесть 73.8%; "
+        "покрытие формы 100%."
+    )
+    assert join_fragments(rings, "conclusion", [panel_id], "ru") == (
+        f"{label} в пределах бюджета свежести."
+    )
+    now = join_fragments(frames, "now", [panel_id], "ru")
+    conclusion = join_fragments(frames, "conclusion", [panel_id], "ru")
+    assert "1 панель" in now
+    assert "с одной панели" in conclusion
+    assert "1 панелям" not in now + conclusion
+
+
+def test_rendered_fragments_never_repeat_a_panel_label(payload) -> None:
+    for card in payload["cards"]:
+        if not card["now_parts"]:
+            continue
+        for panel in payload["panels"]:
+            label = str(panel["label"])
+            panel_id = str(panel["id"])
+            for field in ("now", "conclusion"):
+                for lang in ("en", "ru"):
+                    text = join_fragments(card, field, [panel_id], lang)
+                    assert text.count(label) <= 1, (card["id"], field, lang, text)
+                    assert "1 panels" not in text, (card["id"], field, lang)
+
+
 # --- B: snapshot diff ------------------------------------------------------
 
 
