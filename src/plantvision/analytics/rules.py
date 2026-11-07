@@ -14,6 +14,21 @@ from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
 SEVERITY_ORDER: dict[str, int] = {"critical": 0, "warn": 1}
+VALIDITY_RULE_ID = "validity-violation"
+KNOWN_RULES: frozenset[str] = frozenset(
+    {
+        "growth-stall",
+        "area-drop",
+        "solidity-drop",
+        "scale-coverage",
+        "capture-gap",
+        "stale-data",
+        "quality-flag-rate",
+        "camera-settings-change",
+        "camera-settings-provenance",
+        VALIDITY_RULE_ID,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -39,6 +54,8 @@ class RuleConfig:
     min_frames: int = 6
     baseline_frames: int = 30
     recent_frames: int = 3
+    validity_violation_invalid_severity: str = "critical"
+    validity_violation_unproven_severity: str = "warn"
 
 
 @dataclass(frozen=True)

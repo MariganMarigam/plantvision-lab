@@ -663,7 +663,15 @@ def normalise_shape(rows: Sequence[dict[str, str]]) -> list[dict[str, float]]:
 
 def _load_panel_rows(dataset: "Panel") -> list[dict[str, str]]:
     """Load a panel CSV through the frozen v1 loader (header validation)."""
-    return load_rows(dataset.csv_path)
+    rows = load_rows(dataset.csv_path)
+    where = getattr(dataset, "where", None) or {}
+    if not where:
+        return rows
+    return [
+        row
+        for row in rows
+        if all((row.get(key) or "").strip() == value for key, value in where.items())
+    ]
 
 
 def panel_payload(

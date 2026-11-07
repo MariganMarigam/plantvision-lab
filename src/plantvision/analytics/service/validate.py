@@ -66,8 +66,13 @@ def _finite(value: object) -> bool:
 
 def _walk(payload: Mapping[str, object], path: str) -> object:
     """Resolve a dotted path, returning a sentinel on failure."""
+    parts = path.split(".")
     current: object = payload
-    for part in path.split("."):
+    for index, part in enumerate(parts):
+        if isinstance(current, list):
+            if index == len(parts) - 1:
+                return current
+            raise ContractError(f"cards[].reads: {path} is not an object at {part}")
         if not isinstance(current, Mapping):
             raise ContractError(f"cards[].reads: {path} is not an object at {part}")
         if part not in current:
@@ -78,6 +83,12 @@ def _walk(payload: Mapping[str, object], path: str) -> object:
 
 def _resolve_read(payload: Mapping[str, object], read: str) -> None:
     """Resolve one card read path, expanding a ``<pid>`` placeholder."""
+    if read.startswith("tables."):
+        tables = payload.get("tables")
+        table_id = read[len("tables."):]
+        if not isinstance(tables, Mapping) or table_id not in tables:
+            raise ContractError(f"cards[].reads: missing path {read}")
+        return
     if "<pid>" in read:
         panels = payload.get("panels")
         if not isinstance(panels, list) or not panels:

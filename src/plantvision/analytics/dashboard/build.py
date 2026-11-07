@@ -6,7 +6,7 @@ import base64
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import combinations
 from pathlib import Path
@@ -89,6 +89,11 @@ class Panel:
     masks_dir: Path | None = None
     pipeline_version: str = "unrecorded"
     note: str = ""
+    where: dict[str, str] = field(default_factory=dict)
+    gate2: bool = False
+    light_regime: str = ""
+    pose: str = "side"
+    scale_marker: str = ""
 
 
 @dataclass(frozen=True)
@@ -107,11 +112,13 @@ class ReportResult:
     now_source: str
 
 
-def load_panels(path: Path) -> list[Panel]:
+def load_panels(path: Path, *, include_gate2: bool = False) -> list[Panel]:
     """Load and validate the panel config.
 
     Args:
         path: YAML config path.
+        include_gate2: Read the ``gate2_panels`` group (all Gate 2 panels)
+            instead of the legacy ``panels`` group.
 
     Returns:
         Panel definitions in config order.
@@ -127,7 +134,10 @@ def load_panels(path: Path) -> list[Panel]:
     data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("panels config is empty")
-    entries = data.get("panels")
+    group = "gate2_panels" if include_gate2 else "panels"
+    entries = data.get(group)
+    if include_gate2 and not isinstance(entries, list):
+        entries = data.get("panels")
     if not isinstance(entries, list) or not entries:
         raise ValueError("panels config is empty")
     panels: list[Panel] = []
@@ -147,6 +157,14 @@ def load_panels(path: Path) -> list[Panel]:
         seen.add(panel_id)
         frames_dir = str(entry.get("frames_dir") or "").strip()
         masks_dir = str(entry.get("masks_dir") or "").strip()
+        where_raw = entry.get("where") or {}
+        if not isinstance(where_raw, dict):
+            raise ValueError(f"panel {panel_id}: where must be a mapping")
+        where = {
+            str(name).strip(): str(value).strip()
+            for name, value in where_raw.items()
+            if str(name).strip() and str(value).strip()
+        }
         panels.append(
             Panel(
                 id=panel_id,
@@ -159,6 +177,11 @@ def load_panels(path: Path) -> list[Panel]:
                 masks_dir=Path(masks_dir) if masks_dir else None,
                 pipeline_version=str(entry.get("pipeline_version") or "unrecorded"),
                 note=str(entry.get("note") or ""),
+                where=where,
+                gate2=bool(entry.get("gate2", False)),
+                light_regime=str(entry.get("light_regime") or ""),
+                pose=str(entry.get("pose") or "side"),
+                scale_marker=str(entry.get("scale_marker") or ""),
             )
         )
     return panels
@@ -281,6 +304,8 @@ def _svg_for(
     svgs: dict[str, str] = {}
     for card in cards:
         card_id = str(card["id"])
+        if card.get("tab") in {"crops", "data-quality"}:
+            continue
         kind = str(card.get("chart", ""))
         title = str(card.get("title_en", ""))
         desc = f"{card.get('what_en', '')} {card.get('now_en', '')}".strip()
@@ -578,6 +603,62 @@ def _frame_assets(
     return assets, records
 
 
+def _thin_points_block(block: dict[str, object]) -> None:
+    """Cap the client point table at 80 evenly spaced frames.
+
+    The page payload budget is hard; the static SVG keeps every drawn point,
+    while the client filter endpoint receives a deterministic sample.
+    """
+    points = block.get("points")
+    if not isinstance(points, dict):
+        return
+    stamps = points.get("ts")
+    if not isinstance(stamps, list) or len(stamps) <= 80:
+        return
+    indices = sorted({round(index * (len(stamps) - 1) / 79) for index in range(80)})
+    for key, values in list(points.items()):
+        if isinstance(values, list):
+            points[key] = [values[index] for index in indices if index < len(values)]
+
+
+def _compact_page_payload(payload: dict[str, object]) -> dict[str, object]:
+    """Strip server-only card fields from the browser payload.
+
+    Gate 2 cards are rendered server-side; the client only needs identity,
+    state and titles. This keeps the page payload below its byte budget without
+    changing the contract payload returned by the service.
+    """
+    compact = dict(payload)
+    keep = {
+        "id", "dom_id", "tab", "sub", "title_en", "title_ru", "state",
+        "span", "primitive", "chart",
+    }
+    cards = payload.get("cards")
+    if isinstance(cards, list):
+        compact["cards"] = [
+            (
+                {key: value for key, value in card.items() if key in keep}
+                if card.get("dom_id")
+                else card
+            )
+            for card in cards
+            if isinstance(card, dict)
+        ]
+    return compact
+
+
+def _panel_rows(panel: Panel) -> list[dict[str, str]]:
+    """Load a panel CSV and apply its optional ``where`` row filter."""
+    rows = load_rows(panel.csv_path)
+    if not panel.where:
+        return rows
+    return [
+        row
+        for row in rows
+        if all((row.get(key) or "").strip() == value for key, value in panel.where.items())
+    ]
+
+
 def build_report(
     panels: Sequence[Panel],
     out_path: Path,
@@ -628,7 +709,7 @@ def build_report(
         raise ValueError(f"duplicate panel id: {duplicate}")
     if max_bytes <= 0:
         raise ValueError("max_bytes must be positive")
-    rows_by_panel = {panel.id: load_rows(panel.csv_path) for panel in panels}
+    rows_by_panel = {panel.id: _panel_rows(panel) for panel in panels}
     payload = build_payload(panels, now=now, title=title, config=config)
     payload["overview"] = {"ring_sets": ring_sets(payload["panels"])}
     assets, records = _frame_assets(
@@ -639,7 +720,35 @@ def build_report(
         quality=thumb_quality,
     )
     payload["frames"] = records
-    payload["cards"] = cards_for_payload(payload)
+    gate2_bundle = None
+    if any(bool(getattr(panel, "gate2", False)) for panel in panels):
+        from plantvision.analytics.service.api import build_gate2_bundle
+        from plantvision.analytics.service.types import ServiceOptions
+
+        gate2_bundle = build_gate2_bundle(
+            panels,
+            now,
+            ServiceOptions(lang=lang, title=title),
+            config=config,
+        )
+        for block in payload["panels"]:
+            series = block.get("series")
+            if isinstance(series, dict):
+                block["series"] = {
+                    key: value
+                    for key, value in series.items()
+                    if key in {"area_px", "area_cm2"}
+                }
+            _thin_points_block(block)
+        payload["cards"] = cards_for_payload(payload) + list(gate2_bundle.cards)
+        payload["findings"] = [dict(item) for item in gate2_bundle.findings]
+        payload["validity"] = gate2_bundle.sections["validity"]
+        for block in payload["panels"]:
+            block["points"] = {}
+        payload.pop("comparison", None)
+        payload.pop("method", None)
+    else:
+        payload["cards"] = cards_for_payload(payload)
     for card in payload["cards"]:
         if str(card.get("id")) in PER_PANEL_CONCLUSION:
             # Full single-panel sentences stay server-side; the client formats
@@ -650,14 +759,17 @@ def build_report(
         if finding.get("anchor") not in known_cards:
             finding["anchor"] = ""
     svgs = _svg_for(payload, assets, lang, static_growth=static_growth)
+    if gate2_bundle is not None:
+        svgs.update(dict(gate2_bundle.svgs))
+    json_payload = _compact_page_payload(payload)
     document = layout.render_page(
         payload, svgs, frames=assets, js=layout.JS, lang=lang,
-        logo=logo_data_uri(logo),
+        logo=logo_data_uri(logo), json_payload=json_payload,
     )
     size = len(document.encode("utf-8"))
     json_bytes = len(
         json.dumps(
-            payload, separators=(",", ":"), ensure_ascii=False, sort_keys=True
+            json_payload, separators=(",", ":"), ensure_ascii=False, sort_keys=True
         ).encode("utf-8")
     )
     if json_bytes > max_json_bytes:

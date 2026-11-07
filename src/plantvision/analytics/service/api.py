@@ -202,6 +202,17 @@ def _evidence_section(bundle: SourceBundle) -> dict[str, object]:
                 "validity_row": None,
                 "frame_sha": None,
             }
+        rows_data = bundle.rows_by_panel.get(panel_id, [])
+        sha = (rows_data[0].get("sha256") or "").strip() if rows_data else ""
+        if sha:
+            evidence[f"ev:frame:{sha}"] = {
+                "kind": "frame",
+                "path": f"data/originals/{(rows_data[0].get('camera_id') or '').strip()}",
+                "selector": sha,
+                "rows": None,
+                "validity_row": None,
+                "frame_sha": sha,
+            }
     for record in bundle.validity.records:
         evidence[record.evidence_id] = {
             "kind": "validity",

@@ -186,6 +186,7 @@ _DEFS = (
     + defs_band("pv-band-critical", _BAND_COLOUR["critical"])
     + defs_band("pv-band-ok", _BAND_COLOUR["ok"])
     + defs_hatch("pv-hatch-b", "#C159F5")
+    + defs_hatch("pv-hatch-a", "#F5705E")
     + "</defs>"
 )
 
@@ -1099,5 +1100,111 @@ def radar(
                 f'<circle cx="{num(x)}" cy="{num(y)}" r="4" '
                 f'fill="{_SLOT_STROKE[slot]}"/>'
             )
+    parts.append(chart_close())
+    return "".join(parts)
+
+
+@dataclass(frozen=True)
+class SmallMultiple:
+    """One side of a small-multiples comparison."""
+
+    label: str
+    runs: Sequence[Sequence[tuple[int, float]]]
+    state: str = "ok"
+    stat_text: str = ""
+
+
+def small_multiples(
+    spec: ChartSpec,
+    panels: Sequence[SmallMultiple],
+    *,
+    switch_at: int | None = None,
+    width: int = 720,
+    height: int = 300,
+) -> str:
+    """Two stacked, independently scaled panels with one shared switch rule.
+
+    The panel never averages the two condition sides. An invalid side is
+    hatched and locked while the other side still renders.
+
+    Args:
+        spec: Chart identity and title.
+        panels: One entry per light regime / condition side.
+        switch_at: Optional epoch-ms of the condition switch.
+        width: ViewBox width.
+        height: ViewBox height.
+
+    Returns:
+        SVG markup.
+    """
+    if width < 240 or height < 160:
+        raise ValueError(f"chart too small: {width}x{height}")
+    if not panels:
+        return not_measured_panel(spec, "no condition sides configured")
+    all_runs = [run for panel in panels for run in panel.runs]
+    if not any(all_runs):
+        return not_measured_panel(spec, "no numeric points in this store")
+    x_lo, x_hi = _x_domain(all_runs)
+    inner_width = width - PAD_L - PAD_R
+    panel_height = max(90, (height - PAD_T - PAD_B - 20 * len(panels)) // len(panels))
+    parts = [
+        chart_open(width, height, chart_id=spec.chart_id, title=spec.title, desc=spec.desc),
+        _defs(),
+    ]
+    for index, panel in enumerate(panels):
+        top = PAD_T + index * (panel_height + 20)
+        bottom = top + panel_height
+        values = [point[1] for run in panel.runs for point in run]
+        y_lo, y_hi = _y_domain(values)
+        y_scale = linear((y_lo, y_hi), (bottom, top))
+        x_scale = linear((x_lo, x_hi), (PAD_L, PAD_L + inner_width))
+        parts.append(
+            f'<text x="{PAD_L}" y="{top - 5}" class="pv-legend" '
+            f'data-state="{esc(panel.state)}">{esc(panel.label)}</text>'
+        )
+        parts.append(
+            f'<rect x="{PAD_L}" y="{num(top)}" width="{inner_width}" '
+            f'height="{num(panel_height)}" fill="none" stroke="var(--pv-grid)"/>'
+        )
+        if panel.state == "invalid":
+            parts.append(
+                f'<rect class="pv-invalid-hatch" x="{PAD_L}" y="{num(top)}" '
+                f'width="{inner_width}" height="{num(panel_height)}" '
+                f'fill="url(#pv-hatch-a)" opacity="0.45"/>'
+            )
+            parts.append(
+                f'<text x="{PAD_L + inner_width / 2}" y="{num(top + panel_height / 2)}" '
+                f'text-anchor="middle" class="pv-lock">🔒 invalid</text>'
+            )
+        else:
+            for run in panel.runs:
+                if len(run) < 2:
+                    continue
+                points = [(x_scale(ts), y_scale(value)) for ts, value in run]
+                parts.append(
+                    f'<path d="{path_polyline(points)}" fill="none" '
+                    f'stroke="url(#pv-grad-a)" stroke-width="2" '
+                    f'stroke-linejoin="round" vector-effect="non-scaling-stroke"/>'
+                )
+        if panel.stat_text:
+            parts.append(
+                f'<text x="{PAD_L + inner_width - 4}" y="{top + 12}" '
+                f'text-anchor="end" class="pv-ax">{esc(panel.stat_text)}</text>'
+            )
+        parts.append(
+            f'<text x="{PAD_L - 4}" y="{num(top + 4)}" text-anchor="end" '
+            f'class="pv-ax">{esc(num(y_hi, 0))}</text>'
+        )
+        parts.append(
+            f'<text x="{PAD_L - 4}" y="{num(bottom)}" text-anchor="end" '
+            f'class="pv-ax">{esc(num(y_lo, 0))}</text>'
+        )
+    if switch_at is not None and x_lo <= switch_at <= x_hi:
+        x = linear((x_lo, x_hi), (PAD_L, PAD_L + inner_width))(switch_at)
+        parts.append(
+            f'<line x1="{num(x)}" y1="{PAD_T - 10}" x2="{num(x)}" '
+            f'y2="{height - PAD_B + 4}" stroke="var(--pv-b1)" '
+            'stroke-width="1" stroke-dasharray="4 3"/>'
+        )
     parts.append(chart_close())
     return "".join(parts)

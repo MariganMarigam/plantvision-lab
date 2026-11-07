@@ -72,6 +72,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="hard page-size budget in bytes",
     )
     parser.add_argument(
+        "--max-json-bytes", type=int, default=320_000,
+        help="hard payload JSON budget in bytes",
+    )
+    parser.add_argument(
         "--dump-payload", default=None,
         help="write the JSON payload (without frames/cards) to this path",
     )
@@ -110,7 +114,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     title = args.title or _config_title(Path(args.panels))
     logo = _config_logo(Path(args.panels))
     try:
-        panels = load_panels(Path(args.panels))
+        panels = load_panels(Path(args.panels), include_gate2=True)
         if args.dump_payload:
             payload = build_payload(panels, now=args.now, title=title)
             Path(args.dump_payload).write_text(
@@ -126,6 +130,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             thumb_quality=args.thumb_quality,
             include_frames=not args.no_frames,
             max_bytes=args.max_bytes,
+            max_json_bytes=args.max_json_bytes,
             lang=args.lang,
             static_growth=args.static_growth,
             logo=logo,

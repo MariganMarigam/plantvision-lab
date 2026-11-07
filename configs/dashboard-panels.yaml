@@ -3,6 +3,12 @@ title: Plant CV Lab · growth dashboard
 # Empty string -> the inline 28x28 "PC" placeholder. The file is embedded as a
 # base64 data URI, so the dashboard stays a single self-contained page.
 logo: ""
+# `where` filters the CSV rows at load time. One CSV can therefore feed several
+# panels without duplication (farm-04 is split by `light_regime` below).
+# `gate2: true` opts the panel into the Crops/Data-quality cards and the
+# validity-gated v3 payload; omitted or false keeps the legacy card set.
+# `load_panels()` reads `panels` by default; `include_gate2=True` appends the
+# `gate2_panels` group (all five panels used by the Gate 2 page).
 panels:
   - id: basil-farm02-sam2
     label: basil farm-02 · SAM2
@@ -34,3 +40,70 @@ panels:
     frames_dir: data/originals/phone-01
     masks_dir: ""
     note: Legacy white-light series; shape traits are not measured and a documented framing change makes endpoint growth misleading.
+gate2_panels:
+  - id: basil-farm02-sam2
+    label: basil farm-02 · SAM2
+    crop: basil
+    method: sam2
+    method_label: SAM2 mask, marker prompt (sam2.1_hiera_small)
+    pipeline_version: farm02-sam2-v1
+    csv: data/derived/metrics/basil-farm02-sam2.csv
+    frames_dir: data/originals/farm-02
+    masks_dir: data/labels/farm02-v1/masks
+    note: Mask-derived series, not a classical HSV/ExG measurement; review status stays in the label manifest; scale recomputed per frame from the 45 mm ArUco tag.
+    gate2: true
+    pose: side
+  - id: lettuce-farm03-exg
+    label: lettuce farm-03 · ExG
+    crop: lettuce
+    method: exg
+    method_label: ExG threshold (2G-R-B >= -40)
+    pipeline_version: lettuce-exg-0.1
+    csv: data/derived/metrics/lettuce-timeseries.csv
+    frames_dir: data/originals/farm-03
+    masks_dir: ""
+    note: Classical ExG segmentation; quality_flag is not recorded in this store, so defect rate is "not measured".
+    gate2: true
+    pose: side
+  - id: phone01-white
+    label: phone-01 · white light
+    crop: phone capture
+    method: white-light
+    method_label: legacy white-light series (69 rows)
+    pipeline_version: unrecorded
+    csv: data/derived/metrics/timeseries.csv
+    frames_dir: data/originals/phone-01
+    masks_dir: ""
+    note: Legacy white-light series; shape traits are not measured and a documented framing change makes endpoint growth misleading.
+    gate2: true
+    pose: side
+  - id: farm-04-blurple
+    label: farm-04 · lettuce · blurple
+    crop: lettuce
+    method: exg
+    method_label: ExG threshold (2G-R-B >= -40)
+    pipeline_version: farm04-exg-0.1
+    csv: data/derived/metrics/farm04-timeseries.csv
+    frames_dir: data/originals/farm-04
+    masks_dir: ""
+    note: Blurple side of the farm-04 light change; one CSV is split by light_regime. ExG area is invalid under this regime.
+    gate2: true
+    light_regime: blurple
+    pose: side
+    where:
+      light_regime: blurple
+  - id: farm-04-white
+    label: farm-04 · lettuce · white
+    crop: lettuce
+    method: exg
+    method_label: ExG threshold (2G-R-B >= -40)
+    pipeline_version: farm04-exg-0.1
+    csv: data/derived/metrics/farm04-timeseries.csv
+    frames_dir: data/originals/farm-04
+    masks_dir: ""
+    note: White side of the farm-04 light change; the same CSV is split by light_regime. ExG area is valid under this regime.
+    gate2: true
+    light_regime: white
+    pose: side
+    where:
+      light_regime: white

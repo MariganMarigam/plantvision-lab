@@ -422,3 +422,26 @@ it works from `file://`.
 fallback; the client renderer replaces those nodes in place when JavaScript is
 available. `--no-static-growth` drops that fallback (the JS-required variant)
 and is verified separately.
+
+## Panel selector (`where`) and Gate 2 panels
+
+`configs/dashboard-panels.yaml` supports an optional `where` map on a panel
+entry. Rows are filtered at load time by exact, trimmed cell value, so one CSV
+can feed several panels without duplication:
+
+```yaml
+  - id: farm-04-blurple
+    csv: data/derived/metrics/farm04-timeseries.csv
+    where: {light_regime: blurple}
+```
+
+`load_panels(path, include_gate2=True)` reads the `gate2_panels` group (the five
+Gate 2 panels: the three legacy stores plus farm-04 blurple/white). The default
+`load_panels(path)` keeps the legacy three-panel group so existing contract
+tests and the Gate 1 shell remain byte-stable. `gate2: true` opts a panel into
+the Crops/Data-quality cards and the validity-gated payload.
+
+The Gate 2 page embeds a sampled client point table and the server-rendered
+cards; the full `pv-dashboard/3` service payload (series, measurements,
+validity, evidence, links) is produced by
+`plantvision.analytics.service.build_payload`.

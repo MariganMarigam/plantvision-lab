@@ -27,13 +27,22 @@ TAB_ORDER: tuple[str, ...] = (
     "capture",
     "method",
 )
-POPULATED: frozenset[str] = frozenset({"overview", "growth"})
+POPULATED: frozenset[str] = frozenset({"overview", "growth", "crops", "data-quality"})
 _ICON_KEY: dict[str, str] = {"data-quality": "quality"}
 _BRAND = "Plant CV Lab"
 SUBS: dict[str, tuple[str, ...]] = {
     "overview": ("status", "kpi"),
     "growth": ("area-px", "area-cm2", "rate", "daily"),
+    "data-quality": ("scale", "quality-flags", "gaps", "provenance"),
 }
+
+
+def _tab_subs(tab: str, payload: dict[str, object]) -> tuple[str, ...]:
+    """Sub-tabs for a tab; Crops is one sub per configured panel."""
+    if tab == "crops":
+        panels = payload.get("panels") if isinstance(payload.get("panels"), list) else []
+        return tuple(str(panel.get("id", "")) for panel in panels if panel.get("id"))
+    return SUBS.get(tab, ())
 
 # Filters the controls disable on a tab (mirrors the client ``sync`` rules).
 _SCOPE_DISABLED: dict[str, tuple[str, ...]] = {
@@ -363,7 +372,22 @@ tr[hidden]{display:none}
 @media (max-width:599px){.pv-diff-kpis{grid-template-columns:minmax(0,1fr)}}
 """
 
-CSS = CSS + CONTROL_CSS + B16_CSS
+_GATE2_CSS: str = """
+.pv-chip[data-state=invalid]{background:rgba(245,112,94,.18);color:#FFD2CA;border-color:rgba(245,112,94,.45)}
+.pv-chip[data-state=invalid]::before{content:"✕"}
+.pv-chip[data-state=unproven]{background:rgba(69,62,119,.55);color:var(--pv-mut);border-color:rgba(169,162,204,.35)}
+.pv-chip[data-state=unproven]::before{content:"?"}
+.pv-g2-invalid{position:relative;min-height:180px}
+.pv-g2-invalid .pv-lock{font-size:26px;fill:var(--pv-a1)}
+.pv-g2-table{max-height:340px;overflow:auto}
+.pv-g2-table th{position:sticky;top:0;background:var(--pv-card);z-index:1}
+.pv-g2-table td.pct,.pv-g2-table th.pct,.pv-g2-table td.right,.pv-g2-table th.right{text-align:right;font-variant-numeric:tabular-nums}
+.pv-g2-table tr[data-state=not_recorded]{opacity:.55}
+.pv-g2-note{padding:18px;color:var(--pv-mut)}
+.pv-g2-note .pv-csv{font-family:var(--pv-mono,ui-monospace,monospace);word-break:break-all;color:var(--pv-ink)}
+"""
+
+CSS = CSS + CONTROL_CSS + B16_CSS + _GATE2_CSS
 
 
 def _txt(key: str, lang: str) -> str:
@@ -405,7 +429,20 @@ def _tab_label(tab: str, lang: str) -> str:
 
 def _sub_label(tab: str, sub: str, lang: str) -> str:
     """Sub-tab label."""
-    return _txt(f"ui.sub.{tab}.{sub}", lang)
+    return TEXTS[lang].get(f"ui.sub.{tab}.{sub}", sub)
+
+
+def _sub_display(
+    tab: str, sub: str, payload: dict[str, object], lang: str
+) -> str:
+    """Sub-tab label; Crops uses the configured panel label."""
+    if tab == "crops":
+        panels = payload.get("panels") if isinstance(payload.get("panels"), list) else []
+        for panel in panels:
+            if str(panel.get("id", "")) == sub:
+                return str(panel.get("label", "")) or sub
+        return sub
+    return _sub_label(tab, sub, lang)
 
 
 def _rail(payload: dict[str, object], active: str, lang: str) -> str:
@@ -506,8 +543,8 @@ def _topbar(
         + f'<span data-crumb="sep"{"" if sub else " hidden"}>›</span>'
         + _leaf(
             "span",
-            _sub_label(active, sub, "en") if sub else "",
-            _sub_label(active, sub, "ru") if sub else "",
+            _sub_display(active, sub, payload, "en") if sub else "",
+            _sub_display(active, sub, payload, "ru") if sub else "",
             lang,
             attrs=f' data-crumb="sub"{" hidden" if not sub else ""}',
         )
@@ -515,16 +552,21 @@ def _topbar(
     )
     groups: list[str] = []
     for tab in TAB_ORDER:
-        subs = SUBS.get(tab, ())
+        subs = _tab_subs(tab, payload)
         if not subs:
+            continue
+        if tab in {"crops", "data-quality"} and not any(
+            isinstance(card, dict) and card.get("tab") == tab
+            for card in (payload.get("cards") or [])
+        ):
             continue
         buttons = []
         for name in subs:
             selected = "true" if tab == active and name == sub else "false"
             label = _leaf(
                 "span",
-                TEXTS["en"][f"ui.sub.{tab}.{name}"],
-                TEXTS["ru"][f"ui.sub.{tab}.{name}"],
+                _sub_display(tab, name, payload, "en"),
+                _sub_display(tab, name, payload, "ru"),
                 lang,
             )
             buttons.append(
@@ -743,14 +785,16 @@ def _card(
 ) -> str:
     """One bento card with its explainer strip and conclusion."""
     card_id = str(card["id"])
+    dom_id = str(card.get("dom_id") or card_id)
     span = max(1, int(card.get("span", 1) or 1))
     clamped = max(1, min(span, cols))
     chart = str(card.get("chart", ""))
-    if chart == "board":
+    is_gate2 = bool(card.get("dom_id"))
+    if chart == "board" and not is_gate2:
         figure = _board_table(payload, lang)
-    elif chart == "table":
+    elif chart == "table" and not is_gate2:
         figure = _daily_table(payload, lang)
-    elif chart == "image":
+    elif chart == "image" and not is_gate2:
         figure = _image_grid(payload, card_id, frames or {})
     elif svg:
         figure = svg
@@ -788,7 +832,7 @@ def _card(
         for field in ("what", "how", "now", "do")
     )
     return (
-        f'<article class="pv-card" id="pv-card-{card_id}" data-chart="{card_id}" '
+        f'<article class="pv-card" id="pv-card-{dom_id}" data-chart="{dom_id}" '
         f'data-tab="{esc(str(card["tab"]))}" data-sub="{esc(str(card["sub"]))}" '
         f'data-span="{clamped}" '
         f'data-render="{esc(str(card.get("render", "static")))}" '
@@ -831,7 +875,14 @@ def _panel(
     label_en = TEXTS["en"][f"ui.tab.{tab}"]
     label_ru = TEXTS["ru"][f"ui.tab.{tab}"]
     heading = _leaf("h2", label_en, label_ru, lang, attrs=' tabindex="-1"', cls="pv-h2")
-    if tab not in POPULATED:
+    has_cards = any(
+        isinstance(card, dict) and card.get("tab") == tab
+        for card in (payload.get("cards") or [])
+    )
+    is_populated = tab in POPULATED and (
+        tab not in {"crops", "data-quality"} or has_cards
+    )
+    if not is_populated:
         body = (
             '<div class="pv-empty pv-coming">'
             + _leaf("h2", TEXTS["en"]["ui.coming.title"], TEXTS["ru"]["ui.coming.title"], lang)
@@ -849,12 +900,19 @@ def _panel(
         if isinstance(card, dict) and card.get("tab") == tab
     ]
     groups: list[str] = []
-    for index, sub in enumerate(SUBS.get(tab, ())):
+    for index, sub in enumerate(_tab_subs(tab, payload)):
         sub_hidden = "" if index == 0 else " hidden"
         sub_cards = [card for card in cards if card.get("sub") == sub]
         cols = max(1, min(len(sub_cards), 3))
         markup = "".join(
-            _card(card, svgs.get(str(card["id"]), ""), payload, lang, cols, frames)
+            _card(
+                card,
+                svgs.get(str(card.get("dom_id") or card["id"]), ""),
+                payload,
+                lang,
+                cols,
+                frames,
+            )
             for card in sub_cards
         )
         groups.append(
@@ -1132,6 +1190,7 @@ def _templates(cards: Sequence[dict[str, object]], payload: dict[str, object], l
     templates: list[str] = []
     for card in cards:
         card_id = str(card["id"])
+        dom_id = str(card.get("dom_id") or card_id)
         axes = card.get("axes") if isinstance(card.get("axes"), dict) else {}
         thresholds = card.get("thresholds") if isinstance(card.get("thresholds"), list) else []
         stats = card.get("stats") if isinstance(card.get("stats"), list) else []
@@ -1211,7 +1270,7 @@ def _templates(cards: Sequence[dict[str, object]], payload: dict[str, object], l
             + "</section>"
         )
         templates.append(
-            f'<template id="pv-tpl-{card_id}" data-tab="{esc(str(card["tab"]))}" '
+            f'<template id="pv-tpl-{dom_id}" data-tab="{esc(str(card["tab"]))}" '
             f'data-sub="{esc(str(card["sub"]))}" data-title-en="{esc(str(card["title_en"]))}" '
             f'data-title-ru="{esc(str(card["title_ru"]))}">'
             + _leaf(
@@ -1219,10 +1278,10 @@ def _templates(cards: Sequence[dict[str, object]], payload: dict[str, object], l
                 str(card["title_en"]),
                 str(card["title_ru"]),
                 lang,
-                attrs=f' id="pv-drawer-title-{card_id}"',
+                attrs=f' id="pv-drawer-title-{dom_id}"',
                 cls="pv-drawer-h2",
             )
-            + f'<figure class="pv-drawer-figure" data-clone-chart="{card_id}"></figure>'
+            + f'<figure class="pv-drawer-figure" data-clone-chart="{dom_id}"></figure>'
             + "".join(blocks)
             + "</template>"
         )
@@ -1252,6 +1311,7 @@ def render_page(
     js: str = "",
     lang: str = "en",
     logo: str = "",
+    json_payload: dict[str, object] | None = None,
 ) -> str:
     """Assemble the complete self-contained HTML document.
 
@@ -1275,14 +1335,17 @@ def render_page(
     if not panels:
         raise ValueError("payload has no panels")
     cards = payload.get("cards") if isinstance(payload.get("cards"), list) else []
-    ids = [str(card.get("id", "")) for card in cards]
+    ids = [str(card.get("dom_id") or card.get("id", "")) for card in cards]
     if len(set(ids)) != len(ids):
         duplicate = next(card_id for card_id in ids if ids.count(card_id) > 1)
         raise ValueError(f"duplicate card id: {duplicate}")
     active = TAB_ORDER[0]
     svgs = _strip_defs(svgs)
     data_json = json.dumps(
-        payload, separators=(",", ":"), ensure_ascii=False, sort_keys=True
+        json_payload if json_payload is not None else payload,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        sort_keys=True,
     ).replace("</", "<\\/")
     labels_json = json.dumps(
         {
@@ -1292,11 +1355,11 @@ def render_page(
             },
             "subs": {
                 f"{tab}/{sub}": {
-                    "en": TEXTS["en"][f"ui.sub.{tab}.{sub}"],
-                    "ru": TEXTS["ru"][f"ui.sub.{tab}.{sub}"],
+                    "en": _sub_display(tab, sub, payload, "en"),
+                    "ru": _sub_display(tab, sub, payload, "ru"),
                 }
-                for tab, subtabs in SUBS.items()
-                for sub in subtabs
+                for tab in TAB_ORDER
+                for sub in _tab_subs(tab, payload)
             },
             "terms": {
                 key: {"en": TEXTS["en"][key], "ru": TEXTS["ru"][key]}
@@ -1339,7 +1402,7 @@ def render_page(
         '<div class="pv-app">'
         + _rail(payload, active, lang)
         + '<div class="pv-shell">'
-        + _topbar(payload, active, SUBS[active][0], lang, logo)
+        + _topbar(payload, active, (_tab_subs(active, payload) or ("",))[0], lang, logo)
         + '<main class="pv-main" id="pv-main">'
         + f'<p class="pv-scope" id="pv-scope" data-visible="1">'
         + f"{_scope_html(active, lang)}</p>"
