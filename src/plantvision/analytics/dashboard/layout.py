@@ -385,6 +385,10 @@ _GATE2_CSS: str = """
 .pv-g2-table tr[data-state=not_recorded]{opacity:.55}
 .pv-g2-note{padding:18px;color:var(--pv-mut)}
 .pv-g2-note .pv-csv{font-family:var(--pv-mono,ui-monospace,monospace);word-break:break-all;color:var(--pv-ink)}
+.pv-g2-note .pv-thumb-missing{margin-top:8px;color:var(--pv-mut);font-style:italic}
+.pv-frame-check{margin:0 0 10px}
+.pv-frame-check img{width:100%;height:auto;display:block;border-radius:6px}
+.pv-chart .pv-sm-y,.pv-chart .pv-sm-range{fill:var(--pv-mut)}
 """
 
 CSS = CSS + CONTROL_CSS + B16_CSS + _GATE2_CSS

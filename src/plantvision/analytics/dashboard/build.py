@@ -761,6 +761,47 @@ def build_report(
     svgs = _svg_for(payload, assets, lang, static_growth=static_growth)
     if gate2_bundle is not None:
         svgs.update(dict(gate2_bundle.svgs))
+        from plantvision.analytics.service.join import (
+            THUMBNAIL_MISSING_EN,
+            THUMBNAIL_MISSING_RU,
+            card_state,
+        )
+
+        thumbnails = {
+            str(record.get("panel", "")): record
+            for record in records
+            if record.get("panel")
+        }
+        for card in payload["cards"]:
+            if str(card.get("id")) != "cd-frame-thumb":
+                continue
+            dom_id = str(card.get("dom_id") or card.get("id"))
+            panel_id = str(card.get("sub", ""))
+            rows = rows_by_panel.get(panel_id, [])
+            sha = str(rows[0].get("sha256", "")) if rows else ""
+            record = thumbnails.get(panel_id)
+            card["state"] = card_state(
+                "cd-frame-thumb", frame_sha=sha, thumbnail=record is not None
+            )
+            note = svgs.get(dom_id, "")
+            if record is None:
+                note += (
+                    '<p class="pv-ax pv-thumb-missing" '
+                    f'data-en="{esc(THUMBNAIL_MISSING_EN)}" '
+                    f'data-ru="{esc(THUMBNAIL_MISSING_RU)}">'
+                    f"{esc(THUMBNAIL_MISSING_EN if lang == 'en' else THUMBNAIL_MISSING_RU)}"
+                    "</p>"
+                )
+            else:
+                source = assets.get(str(record.get("id", "")), "")
+                if source:
+                    note = (
+                        '<figure class="pv-frame-check"><img src="'
+                        f'{source}" alt="{esc(str(record.get("alt", "")))}" '
+                        'width="288" height="162" loading="lazy"></figure>'
+                        + note
+                    )
+            svgs[dom_id] = note
     json_payload = _compact_page_payload(payload)
     document = layout.render_page(
         payload, svgs, frames=assets, js=layout.JS, lang=lang,

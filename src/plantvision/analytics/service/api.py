@@ -287,7 +287,10 @@ def _render_section() -> dict[str, object]:
             "line", "bars", "stacked", "ring", "radar", "strips", "calendar",
             "small-multiples", "box", "scatter", "validity-matrix", "table",
         ],
-        "states": ["ok", "empty", "not_recorded", "invalid", "unproven"],
+        "states": [
+            "ok", "empty", "not_recorded", "invalid", "unproven",
+            "warn", "critical", "unknown",
+        ],
         "colors": {"A": "#F5705E", "B": "#C159F5", "pos": "#2FE3A7"},
         "version": "render/3",
     }

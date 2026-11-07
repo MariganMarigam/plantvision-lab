@@ -59,6 +59,77 @@ RULE_CARDS: dict[str, list[str]] = {
     VALIDITY_RULE_ID: ["al-validity", "me-validity-matrix", "cd-area-line"],
 }
 
+# Honest frame-card copy when the build carries no thumbnail for a panel.
+THUMBNAIL_MISSING_EN = "thumbnail not built in this build"
+THUMBNAIL_MISSING_RU = "превью не построено в этой сборке"
+
+# Ring heuristics: each ring is a share of the panel's frames. Scale and
+# freshness are coverage-like (lower is worse); quality is the defect share
+# (higher is worse). Freshness uses the seven-day budget with the two-day stale
+# warning from the default RuleConfig.
+_RING_WARN: dict[str, tuple[str, float]] = {
+    "scale_pct": ("min", 90.0),
+    "quality_pct": ("max", 10.0),
+    "freshness_pct": ("min", 100.0 * (1.0 - 2.0 / 7.0)),
+}
+
+
+def card_state(
+    card_id: str,
+    *,
+    metric_state: str = "",
+    ring_values: Mapping[str, object] | None = None,
+    ring_states: Sequence[str] = (),
+    frame_sha: str = "",
+    thumbnail: bool = False,
+    severities: Sequence[str] = (),
+) -> str:
+    """Compute a card state from the content that card renders.
+
+    A card never inherits the panel verdict: the area card owns the validity
+    verdict, the supply-health rings own their thresholds, and the frame card
+    owns frame/thumbnail availability. Every other card falls back to the
+    severities of the findings that point at it.
+
+    Args:
+        card_id: Card registry id.
+        metric_state: Series state for the card's own metric.
+        ring_values: KPI ring values keyed by ``scale_pct``/``quality_pct``/
+            ``freshness_pct``.
+        ring_states: Optional per-ring states; any ``invalid`` poisons the ring
+            card only.
+        frame_sha: First-frame sha behind the panel.
+        thumbnail: Whether the build embedded a thumbnail for this panel.
+        severities: Finding severities attached to this card.
+
+    Returns:
+        One state token (``ok``, ``warn``, ``critical``, ``invalid`` or
+        ``unknown``).
+    """
+    if card_id == "cd-kpi-rings":
+        if any(str(state) == "invalid" for state in ring_states):
+            return "invalid"
+        for key, (direction, limit) in _RING_WARN.items():
+            raw = (ring_values or {}).get(key)
+            if raw is None:
+                continue
+            value = float(raw)
+            if (direction == "min" and value < limit) or (
+                direction == "max" and value > limit
+            ):
+                return "warn"
+        return "ok"
+    if card_id == "cd-area-line":
+        return "invalid" if metric_state == "invalid" else "ok"
+    if card_id == "cd-frame-thumb":
+        return "ok" if frame_sha and thumbnail else "unknown"
+    if any(str(severity) == "critical" for severity in severities):
+        return "critical"
+    if any(str(severity) == "warn" for severity in severities):
+        return "warn"
+    return "ok"
+
+
 _TITLES: dict[str, tuple[str, str]] = {
     "cd-identity": ("Plant identity", "Идентичность растения"),
     "cd-kpi-rings": ("Supply health", "Здоровье поставки"),
@@ -535,18 +606,29 @@ def _small_panel(panel: Mapping[str, object], series: Mapping[str, object]) -> S
     runs = block.get("runs", []) if isinstance(block, dict) else []
     stats = block.get("stats") or {}
     state = str(block.get("series_state", "empty")) if isinstance(block, dict) else "empty"
+    measured = int(block.get("measured", 0)) if isinstance(block, dict) else 0
     if state == "invalid":
-        text = f"invalid · n={int(block.get('measured', 0))}"
+        text = f"n={measured}"
+        stat_text = ""
     elif stats:
-        text = f"n={int(stats.get('n', 0))} · median {fmt_value(float(stats['median']), 0, 'px')}"
+        text = f"n={measured}"
+        stat_text = f"median {fmt_value(float(stats['median']), 0, 'px')}"
     else:
-        text = "not measured"
+        text = "n=0"
+        stat_text = "not measured"
     light = str(panel.get("light_regime", "")) or "condition"
+    state_word = "invalid" if state == "invalid" else ("valid" if state == "ok" else state)
     return SmallMultiple(
-        label=f"{light} · {text}",
+        label=f"{light} · {state_word} · {text}",
         runs=runs,
         state=state,
-        stat_text=text,
+        stat_text=stat_text,
+        value_min=(
+            float(stats["min"]) if isinstance(stats, dict) and "min" in stats else None
+        ),
+        value_max=(
+            float(stats["max"]) if isinstance(stats, dict) and "max" in stats else None
+        ),
     )
 
 
@@ -846,6 +928,7 @@ def _crops_cards(
         )
     )
     kpi = panel.get("kpi") if isinstance(panel.get("kpi"), dict) else {}
+    kpi_state = card_state("cd-kpi-rings", ring_values=kpi)
     cards.append(
         _card_block(
             "cd-kpi-rings",
@@ -854,15 +937,19 @@ def _crops_cards(
             primitive="ring",
             span=2,
             panel_scope="panel",
-            state=state if state in {"invalid", "unproven"} else "ok",
-            state_reason="validity-violation" if state == "invalid" else ("unproven" if state == "unproven" else ""),
+            state=kpi_state,
+            state_reason=(
+                "validity-violation"
+                if kpi_state == "invalid"
+                else ("ring-below-threshold" if kpi_state == "warn" else "")
+            ),
             validity=area_validity,
             title=_TITLES["cd-kpi-rings"],
             copy=_COPY["cd-kpi-rings"],
             now_en=f"scale { _pct(kpi.get('scale_pct')) }; defects { _pct(kpi.get('quality_pct')) }; freshness { _pct(kpi.get('freshness_pct')) }; age {panel.get('age_days') if panel.get('age_days') is not None else 'not measured'} days.",
             now_ru=f"масштаб { _pct(kpi.get('scale_pct')) }; дефекты { _pct(kpi.get('quality_pct')) }; свежесть { _pct(kpi.get('freshness_pct')) }; возраст {panel.get('age_days') if panel.get('age_days') is not None else 'не измерено'} дн.",
-            conclusion_en=f"the supply is {state if state != 'ok' else 'healthy'} for {condition or 'this panel'}.",
-            conclusion_ru=f"поставка {state if state != 'ok' else 'в норме'} для {condition or 'этой панели'}.",
+            conclusion_en=f"the supply is {kpi_state if kpi_state != 'ok' else 'healthy'} for {condition or 'this panel'}.",
+            conclusion_ru=f"поставка {kpi_state if kpi_state != 'ok' else 'в норме'} для {condition or 'этой панели'}.",
             reads=["panels"],
             evidence=[f"ev:csv:{panel_id}:scale_ok", f"ev:csv:{panel_id}:captured_at"],
             dom_id=dom("cd-kpi-rings"),
@@ -876,8 +963,8 @@ def _crops_cards(
             primitive="line",
             span=2,
             panel_scope="panel",
-            state=state,
-            state_reason="validity-violation" if state == "invalid" else ("unproven" if state == "unproven" else ""),
+            state=card_state("cd-area-line", metric_state=area_state),
+            state_reason="validity-violation" if area_state == "invalid" else "",
             validity=area_validity,
             title=_TITLES["cd-area-line"],
             copy=_COPY["cd-area-line"],
@@ -956,7 +1043,7 @@ def _crops_cards(
             primitive="image",
             span=1,
             panel_scope="panel",
-            state="ok" if first_sha else "not_recorded",
+            state=card_state("cd-frame-thumb", frame_sha=first_sha),
             state_reason="",
             validity=area_validity,
             title=_TITLES["cd-frame-thumb"],

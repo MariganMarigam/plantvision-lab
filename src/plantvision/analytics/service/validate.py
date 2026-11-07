@@ -233,7 +233,10 @@ def _validate_cards(payload: Mapping[str, object]) -> None:
         _require(identity not in seen, f"cards[{index}]", f"duplicate {identity}")
         seen.add(identity)
         _require(
-            card["state"] in {"ok", "empty", "not_recorded", "invalid", "unproven"},
+            card["state"] in {
+                "ok", "empty", "not_recorded", "invalid", "unproven",
+                "warn", "critical", "unknown",
+            },
             f"cards[{index}].state",
             "illegal state",
         )

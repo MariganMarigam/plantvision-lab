@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from plantvision.analytics.dashboard.build import Panel, build_report, load_panels
+from plantvision.analytics.dashboard.charts import ChartSpec, SmallMultiple, small_multiples
 from plantvision.analytics.service import ServiceOptions, build_payload
 from plantvision.analytics.service import derive, gate
 from plantvision.analytics.validity import load_validity
@@ -165,6 +166,76 @@ def test_page_contains_invalid_badge_and_light_sides(page) -> None:
     assert compare is not None
     assert 'data-state="invalid"' in compare.group(0)
     assert "blurple" in compare.group(0) and "white" in compare.group(0)
+
+
+def test_supply_health_card_state_is_independent_of_the_area_verdict(payload) -> None:
+    cards = {str(card["dom_id"]): card for card in payload["cards"]}
+    supply = cards["cd-kpi-rings--farm-04-blurple"]
+    area = cards["cd-area-line--farm-04-blurple"]
+    assert area["state"] == "invalid"
+    assert supply["state"] in {"ok", "warn"}
+    assert supply["state"] != "invalid"
+
+
+def test_frame_card_state_is_unknown_without_a_thumbnail(payload, page) -> None:
+    cards = {str(card["dom_id"]): card for card in payload["cards"]}
+    assert cards["cd-frame-thumb--farm-04-blurple"]["state"] == "unknown"
+    html, _result = page
+    article = re.search(
+        r'<article class="pv-card" id="pv-card-cd-frame-thumb--farm-04-blurple".*?</article>',
+        html,
+        re.S,
+    )
+    assert article is not None
+    body = article.group(0)
+    assert 'data-state="unknown"' in body
+    assert "thumbnail not built in this build" in body
+    assert "превью не построено в этой сборке" in body
+    assert "sha256" in body
+    assert "data/originals/" in body
+
+
+def test_light_comparison_has_two_separate_plot_areas() -> None:
+    sides = [
+        SmallMultiple(
+            "blurple · invalid · n=457",
+            [],
+            state="invalid",
+            value_min=0.0,
+            value_max=78.0,
+        ),
+        SmallMultiple(
+            "white · valid · n=322",
+            [[(0, 446730.0), (3_600_000, 545753.0)]],
+            state="ok",
+            value_min=446730.0,
+            value_max=545753.0,
+        ),
+    ]
+    markup = small_multiples(
+        ChartSpec("cd-light-compare", "Light comparison", "two sides"),
+        sides,
+        switch_at=1_800_000,
+        height=340,
+    )
+    plots = [
+        tuple(float(value) for value in match)
+        for match in re.findall(
+            r'class="pv-sm-plot" x="([\d.]+)" y="([\d.]+)" '
+            r'width="([\d.]+)" height="([\d.]+)"',
+            markup,
+        )
+    ]
+    assert len(plots) == 2
+    first, second = plots
+    assert first[1] + first[3] <= second[1] - 24
+    assert 'class="pv-sm-divider"' in markup
+    axis_panels = re.findall(r'class="pv-sm-y" data-panel="(\d+)"', markup)
+    assert sorted(set(axis_panels)) == ["0", "1"]
+    assert 'class="pv-sm-range" data-panel="0"' in markup
+    assert 'class="pv-sm-range" data-panel="1"' in markup
+    assert "blurple · invalid · n=457" in markup
+    assert "white · valid · n=322" in markup
 
 
 def test_page_has_data_quality_scale_subtab(page) -> None:

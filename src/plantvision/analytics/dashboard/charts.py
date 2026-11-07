@@ -1112,6 +1112,8 @@ class SmallMultiple:
     runs: Sequence[Sequence[tuple[int, float]]]
     state: str = "ok"
     stat_text: str = ""
+    value_min: float | None = None
+    value_max: float | None = None
 
 
 def small_multiples(
@@ -1120,12 +1122,13 @@ def small_multiples(
     *,
     switch_at: int | None = None,
     width: int = 720,
-    height: int = 300,
+    height: int = 340,
 ) -> str:
-    """Two stacked, independently scaled panels with one shared switch rule.
+    """Two separate plot areas with independent axes and one switch rule.
 
-    The panel never averages the two condition sides. An invalid side is
-    hatched and locked while the other side still renders.
+    The panel never averages the two condition sides. Each side owns its plot
+    rectangle, y ticks and min/max caption; the invalid side is hatched and
+    locked inside its own rectangle only. A 1 px divider sits in the gap.
 
     Args:
         spec: Chart identity and title.
@@ -1142,29 +1145,51 @@ def small_multiples(
     if not panels:
         return not_measured_panel(spec, "no condition sides configured")
     all_runs = [run for panel in panels for run in panel.runs]
-    if not any(all_runs):
+    if not any(all_runs) and not any(
+        panel.value_min is not None and panel.value_max is not None
+        for panel in panels
+    ):
         return not_measured_panel(spec, "no numeric points in this store")
     x_lo, x_hi = _x_domain(all_runs)
     inner_width = width - PAD_L - PAD_R
-    panel_height = max(90, (height - PAD_T - PAD_B - 20 * len(panels)) // len(panels))
+    count = len(panels)
+    title_height = 14
+    caption_height = 14
+    gap = 28
+    panel_height = max(
+        56,
+        (height - PAD_T - PAD_B - count * (title_height + caption_height) - (count - 1) * gap)
+        // count,
+    )
     parts = [
         chart_open(width, height, chart_id=spec.chart_id, title=spec.title, desc=spec.desc),
         _defs(),
     ]
+    plot_boxes: list[tuple[float, float]] = []
     for index, panel in enumerate(panels):
-        top = PAD_T + index * (panel_height + 20)
+        block_top = PAD_T + index * (
+            title_height + panel_height + caption_height + gap
+        )
+        top = block_top + title_height
         bottom = top + panel_height
+        plot_boxes.append((top, bottom))
         values = [point[1] for run in panel.runs for point in run]
-        y_lo, y_hi = _y_domain(values)
+        domain_values = (
+            [float(panel.value_min), float(panel.value_max)]
+            if panel.value_min is not None and panel.value_max is not None
+            else values
+        )
+        y_lo, y_hi = _y_domain(domain_values)
         y_scale = linear((y_lo, y_hi), (bottom, top))
         x_scale = linear((x_lo, x_hi), (PAD_L, PAD_L + inner_width))
         parts.append(
-            f'<text x="{PAD_L}" y="{top - 5}" class="pv-legend" '
-            f'data-state="{esc(panel.state)}">{esc(panel.label)}</text>'
+            f'<text class="pv-legend pv-sm-title" data-state="{esc(panel.state)}" '
+            f'x="{PAD_L}" y="{num(top - 4)}">{esc(panel.label)}</text>'
         )
         parts.append(
-            f'<rect x="{PAD_L}" y="{num(top)}" width="{inner_width}" '
-            f'height="{num(panel_height)}" fill="none" stroke="var(--pv-grid)"/>'
+            f'<rect class="pv-sm-plot" x="{PAD_L}" y="{num(top)}" '
+            f'width="{inner_width}" height="{num(panel_height)}" '
+            'fill="none" stroke="var(--pv-grid)"/>'
         )
         if panel.state == "invalid":
             parts.append(
@@ -1186,25 +1211,51 @@ def small_multiples(
                     f'stroke="url(#pv-grad-a)" stroke-width="2" '
                     f'stroke-linejoin="round" vector-effect="non-scaling-stroke"/>'
                 )
+        for tick_value, tick_y in (
+            (y_hi, top),
+            ((y_hi + y_lo) / 2.0, (top + bottom) / 2.0),
+            (y_lo, bottom),
+        ):
+            parts.append(
+                f'<text class="pv-sm-y" data-panel="{index}" '
+                f'x="{PAD_L - 6}" y="{num(tick_y + 4)}" text-anchor="end">'
+                f'{esc(num(tick_value, 0))}</text>'
+            )
+        caption_lo = (
+            float(panel.value_min)
+            if panel.value_min is not None
+            else (min(values) if values else y_lo)
+        )
+        caption_hi = (
+            float(panel.value_max)
+            if panel.value_max is not None
+            else (max(values) if values else y_hi)
+        )
+        unit = f" {spec.unit}" if spec.unit else ""
+        parts.append(
+            f'<text class="pv-sm-range" data-panel="{index}" x="{PAD_L}" '
+            f'y="{num(bottom + caption_height - 2)}">min '
+            f'{esc(num(caption_lo, spec.decimals))} · '
+            f'max {esc(num(caption_hi, spec.decimals))}{esc(unit)}</text>'
+        )
         if panel.stat_text:
             parts.append(
-                f'<text x="{PAD_L + inner_width - 4}" y="{top + 12}" '
+                f'<text x="{PAD_L + inner_width - 4}" y="{num(top + 12)}" '
                 f'text-anchor="end" class="pv-ax">{esc(panel.stat_text)}</text>'
             )
+    for index in range(count - 1):
+        divider_y = (plot_boxes[index][1] + plot_boxes[index + 1][0]) / 2.0
         parts.append(
-            f'<text x="{PAD_L - 4}" y="{num(top + 4)}" text-anchor="end" '
-            f'class="pv-ax">{esc(num(y_hi, 0))}</text>'
-        )
-        parts.append(
-            f'<text x="{PAD_L - 4}" y="{num(bottom)}" text-anchor="end" '
-            f'class="pv-ax">{esc(num(y_lo, 0))}</text>'
+            f'<line class="pv-sm-divider" x1="{PAD_L}" x2="{PAD_L + inner_width}" '
+            f'y1="{num(divider_y)}" y2="{num(divider_y)}" '
+            'stroke="var(--pv-grid)" stroke-width="1"/>'
         )
     if switch_at is not None and x_lo <= switch_at <= x_hi:
         x = linear((x_lo, x_hi), (PAD_L, PAD_L + inner_width))(switch_at)
         parts.append(
-            f'<line x1="{num(x)}" y1="{PAD_T - 10}" x2="{num(x)}" '
-            f'y2="{height - PAD_B + 4}" stroke="var(--pv-b1)" '
-            'stroke-width="1" stroke-dasharray="4 3"/>'
+            f'<line class="pv-sm-switch" x1="{num(x)}" y1="{num(plot_boxes[0][0] - 10)}" '
+            f'x2="{num(x)}" y2="{num(plot_boxes[-1][1] + 2)}" '
+            'stroke="var(--pv-b1)" stroke-width="1" stroke-dasharray="4 3"/>'
         )
     parts.append(chart_close())
     return "".join(parts)
