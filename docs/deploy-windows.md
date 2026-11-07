@@ -1,4 +1,4 @@
-# PlantVision on Windows — deployment guide (Task Scheduler)
+# Plant CV Lab on Windows — deployment guide (Task Scheduler)
 
 > Author: @scout · 2026-10-15 · Companion to `output/handoff/HANDOFF-2026-10-15.md`.
 > Decision D10: the running host is **Windows**; the 10-min cadence is owned by **Task Scheduler**.

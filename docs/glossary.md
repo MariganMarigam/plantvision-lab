@@ -1,4 +1,4 @@
-# PlantVision — Glossary
+# Plant CV Lab — Glossary
 
 Working definitions for the CV and plant-tracking vocabulary used in this repo.
 Citations reference `task/practic_CV.txt` section/line anchors in the planning workspace

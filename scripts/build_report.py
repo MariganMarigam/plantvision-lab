@@ -1,4 +1,4 @@
-"""Build the static PLANT_LAB dashboard v2 (self-contained HTML).
+"""Build the static Plant CV Lab dashboard v2 (self-contained HTML).
 
 Prints exactly one JSON line: ``{"status": "ok", ...}`` on success. Data/IO
 failures exit 1, argparse usage errors exit 2 and a page above the byte budget
@@ -18,7 +18,7 @@ import yaml
 from plantvision.analytics.dashboard.build import build_report, load_panels
 from plantvision.analytics.dashboard.model import build_payload
 
-_DEFAULT_TITLE = "PLANT_LAB · growth dashboard"
+_DEFAULT_TITLE = "Plant CV Lab · growth dashboard"
 
 
 def _parse_now(value: str) -> datetime:
@@ -35,7 +35,7 @@ def _parse_now(value: str) -> datetime:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(
-        description="Render the self-contained PLANT_LAB dashboard v2."
+        description="Render the self-contained Plant CV Lab dashboard v2."
     )
     parser.add_argument(
         "--panels", default="configs/dashboard-panels.yaml",
@@ -93,10 +93,22 @@ def _config_title(path: Path) -> str:
     return _DEFAULT_TITLE
 
 
+def _config_logo(path: Path) -> str:
+    """Read the optional logo path from the panel config (empty when absent)."""
+    try:
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return ""
+    if isinstance(data, dict):
+        return str(data.get("logo") or "").strip()
+    return ""
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the builder; return the process exit code."""
     args = parse_args(argv)
     title = args.title or _config_title(Path(args.panels))
+    logo = _config_logo(Path(args.panels))
     try:
         panels = load_panels(Path(args.panels))
         if args.dump_payload:
@@ -116,6 +128,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_bytes=args.max_bytes,
             lang=args.lang,
             static_growth=args.static_growth,
+            logo=logo,
         )
     except ValueError as exc:
         message = str(exc)

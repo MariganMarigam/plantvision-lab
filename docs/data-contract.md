@@ -1,4 +1,4 @@
-# PlantVision — Data Contract
+# Plant CV Lab — Data Contract
 
 This is the contract every capture, ingest, processing, and analysis component must honor.
 Nothing may be written to the database or to `data/originals/` that violates it.

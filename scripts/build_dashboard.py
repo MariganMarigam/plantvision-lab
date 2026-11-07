@@ -68,7 +68,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="pipeline label shown on the cm² chart",
     )
     parser.add_argument(
-        "--title", default="PlantVision · growth dashboard",
+        "--title", default="Plant CV Lab · growth dashboard",
         help="page title",
     )
     parser.add_argument(

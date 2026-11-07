@@ -1,4 +1,4 @@
-# PlantVision — Checkpoint 2026-10-27 (pause for lettuce dataset)
+# Plant CV Lab — Checkpoint 2026-10-27 (pause for lettuce dataset)
 
 ## Repo
 - Path: `~/devel/CV/plantvision-lab`

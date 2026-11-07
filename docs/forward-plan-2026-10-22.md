@@ -1,4 +1,4 @@
-# PlantVision — Forward Plan (2026-10-22)
+# Plant CV Lab — Forward Plan (2026-10-22)
 
 > Author: Scout · Status: **APPROVED — decisions D1–D9 closed 2026-10-22; implementation-ready**
 > Rev 2 (2026-10-22): D1–D8 incorporated; P1.3 (white-light series) added; P6 re-scoped to visual

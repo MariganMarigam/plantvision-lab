@@ -249,6 +249,44 @@ def test_language_toggle_and_html_lang(page) -> None:
     assert 'data-ru="EN"' in html
 
 
+def test_brand_renders_with_localized_tagline(page) -> None:
+    """The product name is fixed; only the tagline under it is translated."""
+    html, _result, _panels = page
+    assert '<strong class="pv-brand-name">Plant CV Lab</strong>' in html
+    assert (
+        'class="pv-brand-tag" data-en="growth dashboard" data-ru="панель роста"'
+        in html
+    )
+    assert 'data-en="Plant CV Lab"' not in html
+
+
+def test_logo_placeholder_is_accessible(page) -> None:
+    """No configured logo -> the inline 28x28 PC mark is announced."""
+    html, _result, _panels = page
+    assert 'viewBox="0 0 28 28"' in html
+    assert 'role="img" aria-label="Plant CV Lab logo"' in html
+    assert ">PC</text>" in html
+
+
+def test_configured_logo_replaces_placeholder(tmp_path: Path) -> None:
+    """A configured PNG/SVG file is embedded as a data URI in the header."""
+    logo = tmp_path / "mark.svg"
+    logo.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28">'
+        '<rect width="28" height="28"/></svg>',
+        encoding="utf-8",
+    )
+    panels = _panels(tmp_path)
+    out = tmp_path / "logo.html"
+    build_report(
+        panels, out, now=NOW, title="T", include_frames=False, logo=str(logo)
+    )
+    html = out.read_text(encoding="utf-8")
+    assert "data:image/svg+xml;base64," in html
+    assert 'alt="Plant CV Lab logo"' in html
+    assert ">PC</text>" not in html
+
+
 def test_russian_build_uses_ru_html_lang(tmp_path: Path) -> None:
     panels = _panels(tmp_path)
     out = tmp_path / "ru.html"

@@ -27,6 +27,7 @@ __all__ = [
 
 _UI_EN: dict[str, str] = {
     "ui.skip": "Skip to content",
+    "ui.brand.tagline": "growth dashboard",
     "ui.open": "Open detail: {title}",
     "ui.close": "Close detail",
     "ui.lang": "RU",
@@ -204,6 +205,7 @@ _UI_EN: dict[str, str] = {
 
 _UI_RU: dict[str, str] = {
     "ui.skip": "Перейти к содержимому",
+    "ui.brand.tagline": "панель роста",
     "ui.open": "Открыть подробности: {title}",
     "ui.close": "Закрыть подробности",
     "ui.lang": "EN",

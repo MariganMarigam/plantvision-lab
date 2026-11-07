@@ -1,4 +1,4 @@
-# PlantVision — Open Questions / Uncertainty Journal
+# Plant CV Lab — Open Questions / Uncertainty Journal
 
 Two parts: the decision table (what was asked, what was answered) and the open uncertainties
 list (what is still unknown). The uncertainties list is **append-only**: entries are resolved

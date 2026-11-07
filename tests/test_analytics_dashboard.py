@@ -422,6 +422,7 @@ def test_default_html_title_has_no_em_dash(tmp_path: Path) -> None:
     write_dashboard([Dataset("x", source)], out, now=NOW)
     document = out.read_text(encoding="utf-8")
     title = document.split("<title>", 1)[1].split("</title>", 1)[0]
+    assert title.startswith("Plant CV Lab · ")
     assert "—" not in title
     assert " · " in title
 

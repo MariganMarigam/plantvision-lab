@@ -25,7 +25,7 @@ Defaults:
 | `--dataset` | `basil farm-02 · SAM2=data/derived/metrics/basil-farm02-sam2.csv` and `lettuce=data/derived/metrics/lettuce-timeseries.csv` |
 | `--out` | `output/dashboard/index.html` |
 | `--pipeline-version` | `unrecorded` |
-| `--title` | `PlantVision · growth dashboard` |
+| `--title` | `Plant CV Lab · growth dashboard` |
 | `--now` | current UTC time |
 
 The command prints exactly one JSON line, for example:
@@ -224,6 +224,26 @@ The command prints exactly one JSON line:
 Exit codes: `0` ok, `1` data/IO/YAML error, `2` argparse usage, `3` page over
 `--max-bytes` (nothing is written). Output is deterministic for a fixed
 `--now`: two builds produce identical `sha256` bytes.
+
+### Branding
+
+The page title and top-bar brand are `Plant CV Lab`; the product name is never
+translated, while the tagline under it is localized (`growth dashboard` /
+`панель роста`). The panel config carries the optional `logo` key:
+
+```yaml
+title: Plant CV Lab · growth dashboard
+logo: ""          # path to a PNG or SVG file; empty = inline placeholder
+```
+
+- Empty `logo` renders the built-in 28x28 rounded-square SVG placeholder with
+  the initials `PC`, `role="img"` and `aria-label="Plant CV Lab logo"`.
+- A non-empty path to a PNG/SVG file is read and embedded in the header as a
+  `data:` URI, so the page remains self-contained.
+- The asset must be square (1:1 aspect ratio) and at most 64 KB; larger or
+  unsupported files fail the build with an error instead of bloating the page.
+- The logo path is resolved from the process working directory, like the metric
+  CSV paths.
 
 ### Budgets
 

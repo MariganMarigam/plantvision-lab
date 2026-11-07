@@ -1,4 +1,4 @@
-# PlantVision — Architecture
+# Plant CV Lab — Architecture
 
 How the system is put together at Stage 0 — the five components, how data flows between
 them, and what each one is NOT yet responsible for.

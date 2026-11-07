@@ -1,4 +1,4 @@
-# PlantVision
+# Plant CV Lab
 
 Minimal phone-camera → Ubuntu → computer-vision pipeline for monitoring leafy-green
 growth in a vertical farm at home. One phone, one shelf, one crop — and a system

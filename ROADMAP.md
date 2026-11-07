@@ -1,4 +1,4 @@
-# PlantVision — Roadmap (Stages 00–08)
+# Plant CV Lab — Roadmap (Stages 00–08)
 
 > Author: scout · 2026-10-13.
 > Sources of truth: `task/reflection.md` (plan spine), `task/plan_practic_CV.txt` (curriculum outline),

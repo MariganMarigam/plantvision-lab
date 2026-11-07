@@ -38,6 +38,41 @@ from .svg import esc
 
 _ID_RE = re.compile(r"^[a-z0-9-]+$")
 _SLOTS = ("A", "B", "C")
+_LOGO_MIME: dict[str, str] = {
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+}
+_LOGO_MAX_BYTES = 64 * 1024
+
+
+def logo_data_uri(path: str | Path) -> str:
+    """Read a logo file and return a base64 data URI (empty path -> empty).
+
+    Args:
+        path: PNG/SVG file path; ``""`` selects the inline placeholder.
+
+    Returns:
+        A ``data:`` URI, or ``""`` when ``path`` is blank.
+
+    Raises:
+        FileNotFoundError: If the configured file does not exist.
+        ValueError: For an unsupported extension or a file above 64 KB.
+    """
+    if not str(path).strip():
+        return ""
+    source = Path(path)
+    if not source.is_file():
+        raise FileNotFoundError(f"logo not found: {source}")
+    mime = _LOGO_MIME.get(source.suffix.lower())
+    if mime is None:
+        raise ValueError(
+            f"unsupported logo type: {source.suffix or '(none)'} "
+            f"(expected {', '.join(sorted(_LOGO_MIME))})"
+        )
+    data = source.read_bytes()
+    if len(data) > _LOGO_MAX_BYTES:
+        raise ValueError(f"logo {source} is {len(data)} bytes; max {_LOGO_MAX_BYTES}")
+    return f"data:{mime};base64," + base64.b64encode(data).decode("ascii")
 
 
 @dataclass(frozen=True)
@@ -557,6 +592,7 @@ def build_report(
     lang: str = "en",
     static_growth: bool = True,
     max_json_bytes: int = 256_000,
+    logo: str = "",
 ) -> ReportResult:
     """Build the page and write it atomically after the byte gate.
 
@@ -573,6 +609,7 @@ def build_report(
         lang: Initial language (``en``/``ru``).
         static_growth: Keep the Python-rendered Growth fallback charts.
         max_json_bytes: Hard payload JSON budget.
+        logo: Optional PNG/SVG logo path; embedded as a base64 data URI.
 
     Returns:
         The build summary.
@@ -614,7 +651,8 @@ def build_report(
             finding["anchor"] = ""
     svgs = _svg_for(payload, assets, lang, static_growth=static_growth)
     document = layout.render_page(
-        payload, svgs, frames=assets, js=layout.JS, lang=lang
+        payload, svgs, frames=assets, js=layout.JS, lang=lang,
+        logo=logo_data_uri(logo),
     )
     size = len(document.encode("utf-8"))
     json_bytes = len(

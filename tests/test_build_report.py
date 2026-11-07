@@ -220,6 +220,30 @@ def test_cli_lang_ru_sets_html_lang(tmp_path: Path, capsys) -> None:
     assert "Обзор" in html
 
 
+def test_cli_config_logo_replaces_placeholder(tmp_path: Path, capsys) -> None:
+    cli = _load_cli()
+    config, _stores = _write_config(tmp_path)
+    logo = tmp_path / "mark.svg"
+    logo.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28"/>',
+        encoding="utf-8",
+    )
+    data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    data["logo"] = str(logo)
+    config.write_text(yaml.safe_dump(data), encoding="utf-8")
+    out = tmp_path / "index.html"
+    code = cli.main([
+        "--panels", str(config), "--out", str(out), "--now", NOW,
+        "--no-frames",
+    ])
+    assert code == 0
+    _stdout(capsys)
+    html = out.read_text(encoding="utf-8")
+    assert "data:image/svg+xml;base64," in html
+    assert 'alt="Plant CV Lab logo"' in html
+    assert ">PC</text>" not in html
+
+
 def test_payload_budget_gate(tmp_path: Path) -> None:
     config, _stores = _write_config(tmp_path)
     panels = load_panels(config)

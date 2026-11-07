@@ -930,7 +930,7 @@ def write_dashboard(
     *,
     now: datetime,
     pipeline_version: str = "unrecorded",
-    title: str = "PlantVision · growth dashboard",
+    title: str = "Plant CV Lab · growth dashboard",
     config: RuleConfig | None = None,
 ) -> DashboardResult:
     """Render the dashboard for ``datasets`` and write it to ``out_path``.

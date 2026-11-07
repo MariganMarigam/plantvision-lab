@@ -29,6 +29,7 @@ TAB_ORDER: tuple[str, ...] = (
 )
 POPULATED: frozenset[str] = frozenset({"overview", "growth"})
 _ICON_KEY: dict[str, str] = {"data-quality": "quality"}
+_BRAND = "Plant CV Lab"
 SUBS: dict[str, tuple[str, ...]] = {
     "overview": ("status", "kpi"),
     "growth": ("area-px", "area-cm2", "rate", "daily"),
@@ -160,8 +161,13 @@ a:hover{text-decoration:underline}
 .pv-shell{min-width:0}
 .pv-topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:18px;padding:10px 20px;
  background:rgba(27,23,48,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--pv-grid)}
-.pv-crumb{display:flex;align-items:baseline;gap:7px;font-size:13px;color:var(--pv-mut);white-space:nowrap}
+.pv-crumb{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--pv-mut);white-space:nowrap}
 .pv-crumb strong{color:var(--pv-head);font-weight:600;font-size:14px}
+.pv-brand{display:flex;align-items:center;gap:8px;min-width:0}
+.pv-brand-copy{display:flex;flex-direction:column;line-height:1.05}
+.pv-brand-name{color:var(--pv-head);font-weight:600;font-size:14px;white-space:nowrap}
+.pv-brand-tag{font-size:10px;color:var(--pv-mut);white-space:nowrap}
+.pv-logo-mark{width:28px;height:28px;border-radius:6px;flex:0 0 28px;display:block}
 .pv-subtabs{display:flex;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
 .pv-subtabs::-webkit-scrollbar{display:none}
 .pv-subgroup{display:flex;gap:4px}
@@ -450,14 +456,52 @@ def _overall_verdict(payload: dict[str, object]) -> str:
     )
 
 
+def _logo_html(logo: str) -> str:
+    """Product mark: configured data URI or the inline ``PC`` placeholder."""
+    if logo:
+        return (
+            f'<img class="pv-logo-mark" src="{esc(logo)}" width="28" height="28" '
+            f'alt="{_BRAND} logo">'
+        )
+    return (
+        '<svg class="pv-logo-mark" viewBox="0 0 28 28" width="28" height="28" '
+        f'role="img" aria-label="{_BRAND} logo" focusable="false">'
+        f'<title id="pv-logo-title">{_BRAND} logo</title>'
+        '<rect width="28" height="28" rx="6" fill="#7B3FE0"/>'
+        '<text x="14" y="14" text-anchor="middle" dominant-baseline="central" '
+        'font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" '
+        'font-weight="700" fill="#FFFFFF">PC</text></svg>'
+    )
+
+
+def _brand_html(lang: str, logo: str) -> str:
+    """Top-bar brand lockup: untranslated product name plus localized tagline."""
+    return (
+        '<span class="pv-brand">'
+        + _logo_html(logo)
+        + '<span class="pv-brand-copy">'
+        + f'<strong class="pv-brand-name">{_BRAND}</strong>'
+        + _leaf(
+            "span",
+            TEXTS["en"]["ui.brand.tagline"],
+            TEXTS["ru"]["ui.brand.tagline"],
+            lang,
+            cls="pv-brand-tag",
+        )
+        + "</span></span>"
+    )
+
+
 def _topbar(
-    payload: dict[str, object], active: str, sub: str, lang: str
+    payload: dict[str, object], active: str, sub: str, lang: str, logo: str = ""
 ) -> str:
     """Breadcrumb, sub-tabs, language toggle and status pill."""
     tab_en = _tab_label(active, "en")
     tab_ru = _tab_label(active, "ru")
     crumb = (
-        '<div class="pv-crumb"><strong>PLANT_LAB</strong><span>›</span>'
+        '<div class="pv-crumb">'
+        + _brand_html(lang, logo)
+        + "<span>›</span>"
         + _leaf("span", tab_en, tab_ru, lang, attrs=' data-crumb="tab"')
         + f'<span data-crumb="sep"{"" if sub else " hidden"}>›</span>'
         + _leaf(
@@ -1207,6 +1251,7 @@ def render_page(
     frames: dict[str, str] | None = None,
     js: str = "",
     lang: str = "en",
+    logo: str = "",
 ) -> str:
     """Assemble the complete self-contained HTML document.
 
@@ -1216,6 +1261,7 @@ def render_page(
         frames: Base64 frame assets keyed by frame id (unused in gate 1 cards).
         js: Inline JavaScript text.
         lang: Initial language, ``en`` or ``ru``.
+        logo: Optional base64 data URI for the product mark.
 
     Returns:
         The HTML document.
@@ -1293,7 +1339,7 @@ def render_page(
         '<div class="pv-app">'
         + _rail(payload, active, lang)
         + '<div class="pv-shell">'
-        + _topbar(payload, active, SUBS[active][0], lang)
+        + _topbar(payload, active, SUBS[active][0], lang, logo)
         + '<main class="pv-main" id="pv-main">'
         + f'<p class="pv-scope" id="pv-scope" data-visible="1">'
         + f"{_scope_html(active, lang)}</p>"
