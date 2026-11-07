@@ -1,0 +1,50 @@
+# PlantVision capture configuration for the FARM-05 control plant.
+# Control for the farm-04 light experiment: same crop, same protocol, no
+# treatment. It separates the plant effect from the condition effect because
+# farm-04 changes light while farm-05 keeps the white-light condition fixed.
+# Used by scripts/import_offline.py --config.
+#
+# Copied from capture-farm-04-white.yaml; only camera/zone/crop/light identity
+# and the control note differ.
+
+camera_id: farm-05
+zone_id: farm/zone-e
+crop_id: lettuce
+light_regime: white
+
+# Not used by the offline import path (the phone stores frames itself). Kept for
+# schema compatibility with capture.yaml.
+source_url: "http://<phone-ip>:8080/photo.jpg"
+
+# Cadence used on the phone (Open Camera auto-repeat). Informational for import.
+interval_minutes: 5
+
+timeout_seconds: 5
+retry_max: 2
+retry_backoff_seconds: [2, 5]
+
+# Match the farm-04 rig: 1280x720 portrait frames.
+resolution: [1280, 720]
+
+originals_dir: data/originals
+spool_dir: data/spool
+log_path: data/capture.log
+
+# Same photoperiod as farm-01..farm-04.
+light_window:
+  start: "06:00"
+  end: "22:00"
+  tz: "local"
+
+dark_policy: skip
+
+# -- Offline import (USB folder copy) - scripts/import_offline.py -------------
+# Identical thresholds to capture-farm.yaml / capture-farm-02.yaml / farm-03.
+import:
+  extensions: [".jpg", ".jpeg"]
+  brightness_min: 40.0
+  brightness_max: 220.0
+  blur_lapvar_min: 10.0
+  # Informational only: white-light lettuce does not trip the red flag normally.
+  red_dominance_min: 1.5
+  archive_subdir: "_imported"
