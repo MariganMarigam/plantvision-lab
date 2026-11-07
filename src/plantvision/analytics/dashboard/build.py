@@ -783,10 +783,25 @@ def build_report(
     os.replace(temporary, destination)
     now_utc, _source = resolve_now(rows_by_panel, now)
     findings: list[Finding] = []
-    for panel in panels:
-        findings.extend(
-            evaluate_rules(rows_by_panel[panel.id], now=now_utc, config=config)
-        )
+    if gate2_bundle is not None:
+        findings = [
+            Finding(
+                rule_id=str(item.get("rule_id", "")),
+                severity=str(item.get("severity", "")),
+                zone=str(item.get("zone", "")),
+                detail=str(item.get("detail", "")),
+                value=item.get("value") if isinstance(item.get("value"), (int, float)) else None,
+                threshold=item.get("threshold") if isinstance(item.get("threshold"), (int, float)) else None,
+                window_start=str(item.get("window_start", "")),
+                window_end=str(item.get("window_end", "")),
+            )
+            for item in gate2_bundle.findings
+        ]
+    else:
+        for panel in panels:
+            findings.extend(
+                evaluate_rules(rows_by_panel[panel.id], now=now_utc, config=config)
+            )
     return ReportResult(
         out_path=destination,
         panels=len(panels),
